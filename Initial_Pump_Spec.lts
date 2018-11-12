@@ -154,7 +154,7 @@ property NOACTIONAFTERTURNOFF =
 	medicine_empty, flow_unblocked, refill_medicine, low_battery, battery_used_up
 }.
 
-
+ /********************* BELOW IS THE ORIGINAL CODE ON CANVAS *********************/
 /*
 //
 // States of the pump settings
