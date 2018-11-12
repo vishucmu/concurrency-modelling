@@ -35,12 +35,15 @@ const AlarmSilenced  = 1    // Alarm currently inactive
 
 range AlarmStateT = AlarmActivated .. AlarmSilenced
 
-ALARM[alarmState:AlarmStateT] =
+ALARM = STATE[AlarmSilenced],
+STATE[alarmState:AlarmStateT] =
 (
-	when (alarmState == AlarmActivated) silence_alarm -> ALARM[AlarmSilenced]
+	when (alarmState == AlarmActivated) silence_alarm -> STATE[AlarmSilenced]
 	|
-	when (alarmState == AlarmSilenced) sound_alarm -> ALARM[AlarmActivated]
-)
+	when (alarmState == AlarmSilenced) sound_block_alarm -> STATE[AlarmActivated]
+	|
+	when (alarmState == AlarmSilenced) sound_empty_alarm -> STATE[AlarmActivated]
+).
 
 //
 // Pump in infusion mode:
@@ -53,7 +56,9 @@ LINE  =
     dispense_main_med_flow -> LINE
     |
     flow_blocked -> LINE_BLOCKED[AlarmActivated]
-)/{sound_alarm/flow_blocked},
+    |
+    medicine_empty -> NO_MEDICINE[AlarmActivated]
+),
 
 //
 // Pump stuck (medication flow suspended)
@@ -61,19 +66,96 @@ LINE  =
 LINE_BLOCKED[alarm:AlarmStateT]  =
 (
     when (alarm == AlarmActivated)
-        sound_alarm -> LINE_BLOCKED[alarm]
+        sound_block_alarm -> LINE_BLOCKED[alarm]
     |
     when (alarm == AlarmActivated)
         silence_alarm -> LINE_BLOCKED[AlarmSilenced]
     |
     flow_unblocked -> LINE
-).
+),
+
+//
+// No medicine (medicine empty)
+//
+NO_MEDICINE[alarm:AlarmStateT]  =
+(
+    when (alarm == AlarmActivated)
+        sound_empty_alarm -> NO_MEDICINE[alarm]
+    |
+    when (alarm == AlarmActivated)
+        silence_alarm -> NO_MEDICINE[AlarmSilenced]
+    |
+    refill_medicine -> LINE
+)/{sound_block_alarm/flow_blocked, sound_empty_alarm/medicine_empty}.
+
+const PowerOn = 8
+const PowerOff = 9
+range PowerT = PowerOn..PowerOff
+const Battery = 10
+const LowBattery = 11
+const BatteryDead = 12
+const ACPower = 13
+range SourceT = Battery..ACPower
+POWER = POWERSYSTEM[PowerOff][ACPower],
+POWERSYSTEM[power:PowerT][source:SourceT] = (
+	when (power == PowerOff) turn_on -> POWERSYSTEM[PowerOn][source]
+	|
+	when (power == PowerOn) turn_off -> POWERSYSTEM[PowerOff][source]
+	|
+	when (source == Battery) power_ready -> POWERSYSTEM[power][ACPower]
+            |
+            when (source == Battery) low_battery -> POWERSYSTEM[power][LowBattery]
+	|
+	when (source == ACPower) power_fail -> POWERSYSTEM[power][Battery]
+	|
+	when (source == LowBattery) battery_used_up -> POWERSYSTEM[PowerOff][BatteryDead] 
+            | 
+            when (source == LowBattery) power_ready -> POWERSYSTEM[power][ACPower]
+	|
+	when (source == BatteryDead) power_ready -> POWERSYSTEM[power][ACPower]
+)/{sound_alarm/low_battery}.
+// Rename low_battery to synchronize with sound_alarm
+/*
+property PWR = POWERSYSTEM[PowerOff][source:SourceT],
+//POWERSYSTEM[PowerOff][source],
+POWERSYSTEM[power:PowerT][source:SourceT] = (
+	turn_on -> POWERSYSTEM[PowerOn][source]
+	|
+	when (source == Battery) power_ready -> POWERSYSTEM[power][ACPower]
+            |
+            when (source == Battery) low_battery -> POWERSYSTEM[power][LowBattery]
+	|
+	when (source == ACPower) power_fail -> POWERSYSTEM[power][Battery]
+	|
+	when (source == LowBattery) battery_used_up -> POWERSYSTEM[PowerOff][BatteryDead] 
+            | 
+            when (source == LowBattery) power_ready -> POWERSYSTEM[power][ACPower]
+	|
+	when (source == BatteryDead) power_ready -> POWERSYSTEM[power][ACPower]
+)/{sound_alarm/low_battery}.
+// Rename low_battery to synchronize with sound_alarm
+*/
+property NOACTIONAFTERBATTERYDEAD =
+(
+	battery_used_up -> power_ready -> NOACTIONAFTERBATTERYDEAD
+) +
+{
+	silence_alarm, sound_alarm, dispense_main_med_flow, flow_blocked,
+	medicine_empty, flow_unblocked, refill_medicine, turn_on, turn_off,
+	low_battery, power_fail
+}.
+
+property NOACTIONAFTERTURNOFF =
+(
+	turn_off -> turn_on -> NOACTIONAFTERBATTERYDEAD
+) +
+{
+	silence_alarm, sound_alarm, dispense_main_med_flow, flow_blocked,
+	medicine_empty, flow_unblocked, refill_medicine, low_battery, battery_used_up
+}.
 
 
-
-
-
-
+/*
 //
 // States of the pump settings
 //
@@ -198,44 +280,9 @@ const LineUnlocked = 4  // line not locked into a pump channel
 const LineLocked   = 5  // line locked into a pump channel
 
 range LineLockStateT = LineUnlocked .. LineLocked
+*/
 
 
 
 
 
-const PowerOn = 8
-const PowerOff = 9
-range PowerT = PowerOn..PowerOff
-Battery = 10
-LowBattery = 11
-BatteryDead = 12
-ACPower = 13
-range SourceT = Battery..ACPower
-POWERSYSTEM[power:PowerT][source:SourceT] (
-	when (power == PowerOff) turn_on -> POWERSYSTEM[PowerOn][source]
-	|
-	when (power == PowerOn) turn_off -> POWERSYSTEM[PowerOff][source]
-	|
-	when (source == Battery) (power_ready -> POWERSYSTEM[power][ACPower] | low_battery -> POWERSYSTEM[power][LowBattery] )
-	|
-	when (source == ACPower) power_fail -> POWERSYSTEM[power][Battery]
-	|
-	when (source == LowBattery) (battery_used_up -> POWERSYSTEM[PowerOff][BatteryDead] | power_ready -> POWERSYSTEM[power][ACPower])
-	|
-	when (source == BatteryDead) power_ready -> POWERSYSTEM[power][ACPower]
-)/{sound_alarm/low_battery}
-// Rename low_battery to synchronize with sound_alarm
-
-property PWR = POWERSYSTEM[PowerOff][source:SourceT],
-POWERSYSTEM[power:PowerT][source:SourceT] = (
-	turn_on -> POWERSYSTEM[PowerOn][source]
-	|
-	when (source = Battery) (power_ready -> POWERSYSTEM[power][ACPower] | low_battery -> POWERSYSTEM[power][LowBattery] )
-	|
-	when (source = ACPower) power_fail -> POWERSYSTEM[power][Battery]
-	|
-	when (source = LowBattery) (battery_used_up -> POWERSYSTEM[PowerOff][BatteryDead] | power_ready -> POWERSYSTEM[power][ACPower])
-	|
-	when (source = BatteryDead) power_ready -> POWERSYSTEM[power][ACPower]
-)/{sound_alarm/low_battery}
-// Rename low_battery to synchronize with sound_alarm
