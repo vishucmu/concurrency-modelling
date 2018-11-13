@@ -43,6 +43,8 @@ STATE[alarmState:AlarmStateT] =
 	when (alarmState == AlarmSilenced) sound_block_alarm -> STATE[AlarmActivated]
 	|
 	when (alarmState == AlarmSilenced) sound_empty_alarm -> STATE[AlarmActivated]
+	|
+	when (alarmState == AlarmSilenced) sound_battery_alarm -> STATE[AlarmActivated]
 ).
 
 //
@@ -113,7 +115,7 @@ POWERSYSTEM[power:PowerT][source:SourceT] = (
             when (source == LowBattery) power_ready -> POWERSYSTEM[power][ACPower]
 	|
 	when (source == BatteryDead) power_ready -> POWERSYSTEM[power][ACPower]
-)/{sound_alarm/low_battery}.
+)/{sound_battery_alarm/low_battery}.
 // Rename low_battery to synchronize with sound_alarm
 /*
 property PWR = POWERSYSTEM[PowerOff][source:SourceT],
@@ -132,7 +134,7 @@ POWERSYSTEM[power:PowerT][source:SourceT] = (
             when (source == LowBattery) power_ready -> POWERSYSTEM[power][ACPower]
 	|
 	when (source == BatteryDead) power_ready -> POWERSYSTEM[power][ACPower]
-)/{sound_alarm/low_battery}.
+)/{sound_battery_alarm/low_battery}.
 // Rename low_battery to synchronize with sound_alarm
 */
 property NOACTIONAFTERBATTERYDEAD =
@@ -153,8 +155,8 @@ property NOACTIONAFTERTURNOFF =
 	silence_alarm, sound_alarm, dispense_main_med_flow, flow_blocked,
 	medicine_empty, flow_unblocked, refill_medicine, low_battery, battery_used_up
 }.
+||PUMP = (LINE || ALARM || POWER || NOACTIONAFTERBATTERYDEAD).
 
- /********************* BELOW IS THE ORIGINAL CODE ON CANVAS *********************/
 /*
 //
 // States of the pump settings
