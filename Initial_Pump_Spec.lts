@@ -147,7 +147,7 @@ property NOACTIONAFTERBATTERYDEAD =
 
 property NOACTIONAFTERTURNOFF =
 (
-	turn_off -> turn_on -> NOACTIONAFTERBATTERYDEAD
+	turn_off -> turn_on -> NOACTIONAFTERTURNOFF
 ) +
 {
 	silence_alarm, sound_alarm, dispense_main_med_flow, flow_blocked,
