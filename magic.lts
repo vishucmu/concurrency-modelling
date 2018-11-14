@@ -35,26 +35,26 @@ const AlarmSilenced  = 1    // Alarm currently inactive
 
 range AlarmStateT = AlarmActivated .. AlarmSilenced
 
-// //
-// // States of the pump settings
-// //
-// const ParamsNotSet = 2    // pump parameters not set yet
-// const ParamsSet    = 3    // pump parameters already set
+//
+// States of the pump settings
+//
+const ParamsNotSet = 2    // pump parameters not set yet
+const ParamsSet    = 3    // pump parameters already set
 
-// range ParamsStateT = ParamsNotSet .. ParamsSet
-const ParamsNotSet = 2
-const ParamRateSet = 3
-const ParamValueEntered = 4
-const ParamsSet = 5
-range ParamsStateT = ParamsNotSet..ParamsSet
+range ParamsStateT = ParamsNotSet .. ParamsSet
+// const ParamsNotSet = 2
+// const ParamRateSet = 3
+// const ParamValueEntered = 4
+// const ParamsSet = 5
+// range ParamsStateT = ParamsNotSet..ParamsSet
 
-// //
-// // Locked/unlocked states of a line with respect to a pump channel
-// //
-// const LineUnlocked = 4  // line not locked into a pump channel 
-// const LineLocked   = 5  // line locked into a pump channel
+//
+// Locked/unlocked states of a line with respect to a pump channel
+//
+const LineUnlocked = 4  // line not locked into a pump channel 
+const LineLocked   = 5  // line locked into a pump channel
 
-// range LineLockStateT = LineUnlocked .. LineLocked
+range LineLockStateT = LineUnlocked .. LineLocked
 
 //
 // Locked/unlocked states of the pump unit
@@ -96,17 +96,17 @@ const PowerSourceBatteryLow = 14
 const PowerSourceNone = 15
 range PowerSourceT = PowerSourceAC..PowerSourceNone
 
-//
-//  States of line connection
-//
-const LineNotConnected = 16
-const LineConnectedSet = 17
-const LineAirpurged = 18
-const LineLocked = 19
-range LineStateT = LineNotConnected..LineLocked
+// //
+// //  States of line connection
+// //
+// const LineNotConnected = 16
+// const LineConnectedSet = 17
+// const LineAirpurged = 18
+// const LineLocked = 19
+// range LineStateT = LineNotConnected..LineLocked
 
 //
-// Stated of flow
+// States of flow
 //
 const FlowUnblocked = 20
 const FlowBlocked = 21
@@ -134,88 +134,57 @@ POWERSYETEM[powerState:PowerStateT][powerSource:PowerSourceT] = (
         battery_used_up -> POWERSYETEM[PowerOff][PowerSourceNone]
 ).
 
-// Unit part
-UNIT = UNITOFF,
-UNITOFF = (
-    turn_on -> UNITSTATE[UnitUnlocked]
+// Line part
+LINE(LineIndex=LineMinIndex) = LINESTATE[LineIndex][LineUnlocked],
+LINESTATE[lineIndex:LineIndexT][lineLock:LineLockStateT] = (
+    when (lineLock == LineUnlocked)
+        connect_set[lineIndex] -> purge_air[lineIndex] -> lock_line[lineIndex] -> LINESTATE[lineIndex][LineLocked]
+    |
+    when (lineLock == LineLocked)
+        erase_and_unlock_line[lineIndex] -> LINESTATE[lineIndex][LineUnlocked]
+    |
+    when (lineLock == LineLocked)
+        confirm_settings[lineIndex] -> LINEPUMP[lineIndex]
 ),
-UNITSTATE[unitLock:UnitLockStateT] = (
-    when (unitLock == UnitUnlocked)
-        lock_unit -> UNITSTATE[UnitLocked]
+LINEPUMP[lineIndex:LineIndexT] = (
+    change_settings[lineIndex] -> LINESTATE[lineIndex][LineLocked][MedicineRemain]
     |
-    when (unitLock == UnitLocked)
-        unlock_unit -> UNITSTATE[UnitUnlocked]
+    medicine_used_up[lineIndex] -> change_medicine[lineIndex] -> LINESTATE[lineIndex][LineLocked]
     |
-    unit_state[unitLock] -> UNITSTATE[unitLock]
+    dispense_main_med_flow[lineIndex] -> LINEPUMP[lineIndex]
     |
-    turn_off -> UNITOFF
-	|
-	battery_used_up -> UNITOFF
+    main_med_flow_finish[lineIndex] -> LINESTATE[lineIndex][LineLocked]
+    |
+    flow_blocked[lineIndex] -> flow_unblocked[lineIndex] -> LINEPUMP[lineIndex]
 ).
 
-// Line part
-LINE(LineIndex=LineMinIndex) = LINEOFF[LineIndex][LineNotConnected],
-LINEOFF[lineIndex:LineIndexT][lineState:LineStateT] = (
-    turn_on -> LINESETUP[LineIndex][ParamsNotSet][lineState]
-    |
-    when (lineState == LineNotConnected) 
-        connect_set -> LINEOFF[lineIndex][LineConnectedSet]
-    |
-    when (lineState == LineConnectedSet)
-        purge_air -> LINEOFF[lineIndex][LineAirpurged]
-    |
-    when (lineState == LineAirpurged)
-        lock_line -> LINEOFF[lineIndex][LineLocked]
-	|
-    when (lineState != LineNotConnected) 
-        erase_and_unlock_line -> LINEOFF[lineIndex][LineNotConnected]
+// Infusion part
+INFUSION(LineIndex=LineMinIndex) = INFUSIONOFF[LineIndex],
+INFUSIONOFF[lineIndex:LineIndexT] = (
+    turn_on -> INFUSIONSETUP[LineIndex][ParamsNotSet]
 ),
-LINESETUP[lineIndex:LineIndexT][params:ParamsStateT][lineState:LineStateT] = (
-    when (params == ParamsNotSet) 
-        set_rate -> LINESETUP[lineIndex][ParamRateSet][lineState]
-    |
-    when (params == ParamRateSet)
-        enter_value -> LINESETUP[lineIndex][ParamValueEntered][lineState]
-    |
-    when (params == ParamValueEntered)
-        press_set -> LINESETUP[lineIndex][ParamsSet][lineState]
-    |
-    when (params == ParamRateSet || params == ParamValueEntered)
-        press_cancel -> LINESETUP[lineIndex][ParamsNotSet][lineState]
+INFUSIONSETUP[lineIndex:LineIndexT][params:ParamsStateT] = (
+    when (params == ParamsNotSet)
+        press_set[lineIndex] -> INFUSIONSETUP[lineIndex][ParamsSet]
+	|
+    when (params == ParamsSet)
+        clear_rate[lineIndex] -> INFUSIONSETUP[lineIndex][ParamsNotSet]
 	|
     when (params == ParamsSet) 
-        clear_rate -> LINESETUP[lineIndex][ParamsNotSet][lineState]
+        confirm_settings[lineIndex] -> INFUSIONPUMP[lineIndex][FlowUnblocked]
     |
-    when (lineState == LineNotConnected) 
-        connect_set -> LINESETUP[lineIndex][params][LineConnectedSet]
-    |
-    when (lineState == LineConnectedSet)
-        purge_air -> LINESETUP[lineIndex][params][LineAirpurged]
-    |
-    when (lineState == LineAirpurged)
-        lock_line -> LINESETUP[lineIndex][params][LineLocked]
+    turn_off -> INFUSIONOFF[lineIndex]
 	|
-    when (lineState != LineNotConnected) 
-        erase_and_unlock_line -> LINESETUP[lineIndex][params][LineNotConnected]
-    |
-    when (params == ParamsSet && lineState == LineLocked) 
-        confirm_settings -> INFUSION[lineIndex][UnitUnlocked][FlowUnblocked]
-    |
-    turn_off -> LINEOFF[lineIndex][lineState]
-	|
-	battery_used_up -> LINEOFF[lineIndex][lineState]
+	battery_used_up -> INFUSIONOFF[lineIndex]
 ),
-INFUSION[lineIndex:LineIndexT][unitLock:UnitLockStateT][flowState:FlowStateT] = (
-    unit_state[UnitUnlocked] -> change_settings -> LINESETUP[lineIndex][ParamsSet][LineLocked]
+INFUSIONPUMP[lineIndex:LineIndexT] = (
+    change_settings[lineIndex] -> INFUSIONSETUP[lineIndex][ParamsSet]
     |
-    when (flowState == FlowUnblocked)
-        dispense_main_med_flow -> INFUSION[lineIndex][unitLock][FlowUnblocked]
+    medicine_used_up[lineIndex] -> INFUSIONSETUP[lineIndex][ParamsSet]
     |
-    when (flowState == FlowUnblocked)
-        flow_blocked -> INFUSION[lineIndex][unitLock][FlowBlocked]
+    dispense_main_med_flow[lineIndex] -> INFUSIONPUMP[lineIndex]
     |
-    when (flowState == FlowBlocked)
-        flow_unblocked -> INFUSION[lineIndex][unitLock][FlowUnblocked]
+    main_med_flow_finish[lineIndex] -> LINESETUP[lineIndex][ParamsNotSet]
     |
     turn_off -> LINEOFF[lineIndex][LineLocked]
 	|
@@ -226,17 +195,15 @@ INFUSION[lineIndex:LineIndexT][unitLock:UnitLockStateT][flowState:FlowStateT] = 
 ALARM = ALARM_OFF,
 ALARM_OFF = (
     turn_on -> ALARM_STATE[AlarmSilenced]
-	|
-	low_battery -> ALARM_OFF
 ),
 ALARM_STATE[alarmState:AlarmStateT] =
 (
     when (alarmState == AlarmActivated)
         silence_alarm -> ALARM_STATE[AlarmSilenced]
     |
-    flow_blocked -> ALARM_STATE[AlarmActivated]
+    flow_blocked[lineIndex:LineIndexT] -> ALARM_STATE[AlarmActivated]
     |
-    medicine_empty -> ALARM_STATE[AlarmActivated]
+    medicine_used_up[lineIndex:LineIndexT] -> ALARM_STATE[AlarmActivated]
     |
     low_battery -> ALARM_STATE[AlarmActivated]
     |
@@ -245,37 +212,69 @@ ALARM_STATE[alarmState:AlarmStateT] =
 	battery_used_up -> ALARM_OFF
 ).
 
-||PUMP = ({line[LineIndexT]} :: POWER || forall [index:LineIndexT] line[index] : LINE || {line[LineIndexT]} :: UNIT || {line[LineIndexT]} :: ALARM) / {
-	sound_alarm/line[LineIndexT].sound_alarm, 
-	silence_alarm/line[LineIndexT].silence_alarm, 
-	lock_unit/line[LineIndexT].lock_unit,
-	unlock_unit/line[LineIndexT].unlock_unit,  
-	plug_in/line[LineIndexT].plug_in, 
-	unplug/line[LineIndexT].unplug,
-	turn_on/line[LineIndexT].turn_on,
-	turn_off/line[LineIndexT].turn_off, 
-	low_battery/line[LineIndexT].low_battery
-} \ {line[LineIndexT].unit_state[UnitLockStateT]}.
+// User interface part
+UNIT = UNITOFF,
+UNITOFF = (
+    turn_on -> UNITSTATE[UnitUnlocked]
+),
+UNITSTATE[unitLock:UnitLockStateT] = (
+    when (unitLock == UnitLocked)
+        unlock_unit -> UNITSTATE[UnitUnlocked]
+    |
+    when (unitLock == UnitUnlocked)
+        lock_unit -> UNITSTATE[UnitLocked]
+    |
+    when (unitLock == UnitUnlocked)
+        set_rate[lineIndex:LineIndexT] -> (
+            battery_used_up -> UNITOFF
+            |
+            enter_value[lineIndex:LineIndexT] -> (
+                battery_used_up -> UNITOFF
+                |
+                press_set[lineIndex:LineIndexT] -> UNITSTATE[UnitUnlocked]
+                |
+                press_cancel[lineIndex:LineIndexT] -> UNITSTATE[UnitUnlocked]
+            )
+        )
+    |
+    when (unitLock == UnitLocked)
+        confirm_settings[lineIndex:LineIndexT] -> UNITSTATE[UnitUnlocked]
+    |
+    when (unitLock == UnitLocked)
+        change_settings[lineIndex:LineIndexT] -> UNITSTATE[UnitUnlocked]
+    |
+    when (unitLock == UnitLocked)
+        clear_rate[lineIndex:LineIndexT] -> UNITSTATE[UnitUnlocked]
+    |
+    silence_alarm -> UNITSTATE[unitLock]
+    |
+    when (unitLock == UnitUnlocked)
+        turn_off -> UNITOFF
+	|
+	battery_used_up -> UNITOFF
+).
+
+||PUMP = (POWER || forall [index:LineIndexT] LINE(index) || forall [index:LineIndexT] INFUSION(index) || ALARM || UNIT).
 //change_settings, clear_rate, confirm_settings, connect_set, dispense_main_med_flow, enter_value, erase_and_unlock_line, flow_unblocked, press_cancel, press_set, set_rate, flow_blocked, purge_air, lock_line
 
-fluent BATTERYALARMON =
-	<{low_battery}, {silence_alarm, plug_in}>
-fluent MEDICINEALARMON =
-	<{medicine_empty}, {silence_alarm, refill_medicine}>
-fluent LINEALARMON =
-	<{flow_blocked}, {silence_alarm, line_unblocked}>
-fluent BATTERYDEAD =
-	<{battery_dead}, {charge_dead_battery}>
-fluent PUMPSET =
-	<{confirm_setting}, {reset_setting}>
+// fluent BATTERYALARMON =
+// 	<{low_battery}, {silence_alarm, plug_in}>
+// fluent MEDICINEALARMON =
+// 	<{medicine_empty}, {silence_alarm, refill_medicine}>
+// fluent LINEALARMON =
+// 	<{flow_blocked}, {silence_alarm, line_unblocked}>
+// fluent BATTERYDEAD =
+// 	<{battery_dead}, {charge_dead_battery}>
+// fluent PUMPSET =
+// 	<{confirm_setting}, {reset_setting}>
 
-assert NOPUMPINGWHENBATTERYDEAD =
-	[](BATTERYDEAD -> !dispense_main_med_flow)
-assert SETBEFOREPUMP =
-	[](!PUMPSET -> !dispense_main_med_flow)
-assert BATTERYALARMWILLSOUND =
-	[](sound_battery_alarm -> <>BATTERYALARMON)
-assert MEDICINEALARMWILLSOUND =
-	[](sound_medicine_alarm -> <>MEDICINEALARMON)
-assert LINEALARMWILLSOUND =
-	[](sound_line_alarm -> <>LINEALARMON)
+// assert NOPUMPINGWHENBATTERYDEAD =
+// 	[](BATTERYDEAD -> !dispense_main_med_flow)
+// assert SETBEFOREPUMP =
+// 	[](!PUMPSET -> !dispense_main_med_flow)
+// assert BATTERYALARMWILLSOUND =
+// 	[](sound_battery_alarm -> <>BATTERYALARMON)
+// assert MEDICINEALARMWILLSOUND =
+// 	[](sound_medicine_alarm -> <>MEDICINEALARMON)
+// assert LINEALARMWILLSOUND =
+// 	[](sound_line_alarm -> <>LINEALARMON)
