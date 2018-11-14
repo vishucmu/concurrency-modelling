@@ -15,13 +15,13 @@
 // Set of actions that the user of the LTSA tool can control in an
 // animation of this model.
 //
-menu UserControlMenu = {
-    change_settings, clear_rate, confirm_settings, connect_set,
-    dispense_main_med_flow, enter_value, erase_and_unlock_line,
-    flow_unblocked, sound_alarm, lock_unit, plug_in, press_cancel, 
-    press_set, set_rate, silence_alarm, turn_off, unlock_unit, unplug,
-    flow_blocked
-}
+// menu UserControlMenu = {
+//     change_settings, clear_rate, confirm_settings, connect_set,
+//     dispense_main_med_flow, enter_value, erase_and_unlock_line,
+//     flow_unblocked, sound_alarm, lock_unit, plug_in, press_cancel, 
+//     press_set, set_rate, silence_alarm, turn_off, unlock_unit, unplug,
+//     flow_blocked, pump_on
+// }
 
 //======================
 // Constants and Ranges
@@ -38,13 +38,15 @@ range AlarmStateT = AlarmActivated .. AlarmSilenced
 ALARM = STATE[AlarmSilenced],
 STATE[alarmState:AlarmStateT] =
 (
-	when (alarmState == AlarmActivated) silence_alarm -> STATE[AlarmSilenced]
-	|
-	when (alarmState == AlarmSilenced) sound_block_alarm -> STATE[AlarmActivated]
-	|
-	when (alarmState == AlarmSilenced) sound_empty_alarm -> STATE[AlarmActivated]
-	|
-	when (alarmState == AlarmSilenced) sound_battery_alarm -> STATE[AlarmActivated]
+    pump_on->(no_action->STATE[alarmState]|action->(
+        when (alarmState == AlarmActivated) silence_alarm -> STATE[AlarmSilenced]
+        |
+        when (alarmState == AlarmSilenced) sound_block_alarm -> STATE[AlarmActivated]
+        |
+        when (alarmState == AlarmSilenced) sound_empty_alarm -> STATE[AlarmActivated]
+        |
+        when (alarmState == AlarmSilenced) sound_battery_alarm -> STATE[AlarmActivated]
+    ))
 ).
 
 //
@@ -55,11 +57,13 @@ STATE[alarmState:AlarmStateT] =
 //
 LINE  =
 (
-    dispense_main_med_flow -> LINE
-    |
-    flow_blocked -> LINE_BLOCKED[AlarmActivated]
-    |
-    medicine_empty -> NO_MEDICINE[AlarmActivated]
+    pump_on->(no_action->LINE|action->(
+        dispense_main_med_flow -> LINE
+        |
+        flow_blocked -> LINE_BLOCKED[AlarmActivated]
+        |
+        medicine_empty -> NO_MEDICINE[AlarmActivated]
+    ))
 ),
 
 //
@@ -67,13 +71,15 @@ LINE  =
 //
 LINE_BLOCKED[alarm:AlarmStateT]  =
 (
-    when (alarm == AlarmActivated)
-        sound_block_alarm -> LINE_BLOCKED[alarm]
-    |
-    when (alarm == AlarmActivated)
-        silence_alarm -> LINE_BLOCKED[AlarmSilenced]
-    |
-    flow_unblocked -> LINE
+    pump_on->(no_action->LINE_BLOCKED[alarm]|action->(
+        when (alarm == AlarmActivated)
+            sound_block_alarm -> LINE_BLOCKED[alarm]
+        |
+        when (alarm == AlarmActivated)
+            silence_alarm -> LINE_BLOCKED[AlarmSilenced]
+        |
+        flow_unblocked -> LINE
+    ))
 ),
 
 //
@@ -81,13 +87,15 @@ LINE_BLOCKED[alarm:AlarmStateT]  =
 //
 NO_MEDICINE[alarm:AlarmStateT]  =
 (
-    when (alarm == AlarmActivated)
-        sound_empty_alarm -> NO_MEDICINE[alarm]
-    |
-    when (alarm == AlarmActivated)
-        silence_alarm -> NO_MEDICINE[AlarmSilenced]
-    |
-    refill_medicine -> LINE
+    pump_on->(no_action->NO_MEDICINE[alarm]|action->(
+        when (alarm == AlarmActivated)
+            sound_empty_alarm -> NO_MEDICINE[alarm]
+        |
+        when (alarm == AlarmActivated)
+            silence_alarm -> NO_MEDICINE[AlarmSilenced]
+        |
+        refill_medicine -> LINE
+    ))
 )/{sound_block_alarm/flow_blocked, sound_empty_alarm/medicine_empty}.
 
 const PowerOn = 8
@@ -102,17 +110,19 @@ POWER = POWERSYSTEM[PowerOff][ACPower],
 POWERSYSTEM[power:PowerT][source:SourceT] = (
 	when (power == PowerOff) turn_on -> POWERSYSTEM[PowerOn][source]
 	|
-	when (power == PowerOn) turn_off -> POWERSYSTEM[PowerOff][source]
+//	when (power == PowerOn) turn_off -> POWERSYSTEM[PowerOff][source]
+// 	| 
+	when (power == PowerOn) pump_on -> (action -> POWERSYSTEM[PowerOn][source] | turn_off -> POWERSYSTEM[PowerOff][source])
 	|
 	when (source == Battery) power_ready -> POWERSYSTEM[power][ACPower]
-            |
-            when (source == Battery) low_battery -> POWERSYSTEM[power][LowBattery]
+	|
+	when (source == Battery) low_battery -> POWERSYSTEM[power][LowBattery]
 	|
 	when (source == ACPower) power_fail -> POWERSYSTEM[power][Battery]
 	|
 	when (source == LowBattery) battery_used_up -> POWERSYSTEM[PowerOff][BatteryDead] 
-            | 
-            when (source == LowBattery) power_ready -> POWERSYSTEM[power][ACPower]
+	| 
+	when (source == LowBattery) power_ready -> POWERSYSTEM[power][ACPower]
 	|
 	when (source == BatteryDead) power_ready -> POWERSYSTEM[power][ACPower]
 )/{sound_battery_alarm/low_battery}.
@@ -137,25 +147,25 @@ POWERSYSTEM[power:PowerT][source:SourceT] = (
 )/{sound_battery_alarm/low_battery}.
 // Rename low_battery to synchronize with sound_alarm
 */
-property NOACTIONAFTERBATTERYDEAD =
-(
-	battery_used_up -> power_ready -> NOACTIONAFTERBATTERYDEAD
-) +
-{
-	silence_alarm, sound_alarm, dispense_main_med_flow, flow_blocked,
-	medicine_empty, flow_unblocked, refill_medicine, turn_on, turn_off,
-	low_battery, power_fail
-}.
+// property NOACTIONAFTERBATTERYDEAD =
+// (
+// 	battery_used_up -> power_ready -> NOACTIONAFTERBATTERYDEAD
+// ) +
+// {
+// 	silence_alarm, sound_alarm, dispense_main_med_flow, flow_blocked,
+// 	medicine_empty, flow_unblocked, refill_medicine, turn_on, turn_off,
+// 	low_battery, power_fail
+// }.
 
-property NOACTIONAFTERTURNOFF =
-(
-	turn_off -> turn_on -> NOACTIONAFTERTURNOFF
-) +
-{
-	silence_alarm, sound_alarm, dispense_main_med_flow, flow_blocked,
-	medicine_empty, flow_unblocked, refill_medicine, low_battery, battery_used_up
-}.
-||PUMP = (LINE || ALARM || POWER || NOACTIONAFTERBATTERYDEAD).
+// property NOACTIONAFTERTURNOFF =
+// (
+// 	turn_off -> turn_on -> NOACTIONAFTERTURNOFF
+// ) +
+// {
+// 	silence_alarm, sound_alarm, dispense_main_med_flow, flow_blocked,
+// 	medicine_empty, flow_unblocked, refill_medicine, low_battery, battery_used_up
+// }.
+||PUMP = (LINE || ALARM || POWER)\{pump_on,action,no_action}.
 
 /*
 //
