@@ -36,33 +36,47 @@ const BatteryLow = 5
 const BatteryDead = 6
 range BatteryStateT = BatteryFull..BatteryDead
 
-const AlarmActivated = 7    // Alarm currently active
-const AlarmSilenced  = 8    // Alarm currently inactive
-range AlarmStateT = AlarmActivated .. AlarmSilenced
+const BatteryAlarmOn = 7 
+const BatteryAlarmOff  = 8
+range BatteryAlarmStateT = BatteryAlarmOn..BatteryAlarmOff
+const MedicineAlarmOn = 9
+const MedicineAlarmOff = 10
+range MedicineAlarmStateT = MedicineAlarmOn..MedicineAlarmOff
+const LineAlarmOn = 11
+const LineAlarmOff = 12
+range LineAlarmStateT = LineAlarmOn..LineAlarmOff
 
-const LineBlocked = 9
-const LineUnblocked = 10
+const LineBlocked = 13
+const LineUnblocked = 14
 range LineStateT = LineBlocked..LineUnblocked
 
-const MedicineSufficient = 11
-const MedicineEmpty = 12
+const MedicineSufficient = 15
+const MedicineEmpty = 16
 range MedicineStateT = MedicineSufficient..MedicineEmpty
 
 ALARM = OFF,
-OFF = (turn_on -> STATE[AlarmSilenced]),
-STATE[alarmState:AlarmStateT] =
+OFF = (turn_on -> STATE[BatteryAlarmOff][MedicineAlarmOff][LineAlarmOff]),
+STATE[batteryAlarmState:BatteryAlarmStateT][medicineAlarmState:MedicineAlarmStateT][lineAlarmState: LineAlarmStateT] =
 (
-	when (alarmState == AlarmActivated) 
-		silence_alarm -> STATE[AlarmSilenced]
+	// Alarm triggered
+	when (batteryAlarmState == BatteryAlarmOff) 
+		sound_battery_alarm -> STATE[BatteryAlarmOn][medicineAlarmState][lineAlarmState]
 	|
-	when (alarmState == AlarmSilenced) 
-		sound_block_alarm -> STATE[AlarmActivated]
+	when (medicineAlarmState == MedicineAlarmOff) 
+		sound_medicine_alarm -> STATE[batteryAlarmState][MedicineAlarmOn][lineAlarmState]
 	|
-	when (alarmState == AlarmSilenced) 
-		sound_medicine_alarm -> STATE[AlarmActivated]
+	when (lineAlarmState == LineAlarmOff)
+		sound_line_alarm -> STATE[batteryAlarmState][medicineAlarmState][LineAlarmOn]
 	|
-	when (alarmState == AlarmSilenced) 
-		sound_battery_alarm -> STATE[AlarmActivated]
+	// Alarm deactivated
+	when (batteryAlarmState == BatteryAlarmOn) 
+		silence_battery_alarm -> STATE[BatteryAlarmOff][medicineAlarmState][lineAlarmState]
+	|
+	when (medicineAlarmState == MedicineAlarmOn) 
+		silence_medicine_alarm -> STATE[batteryAlarmState][MedicineAlarmOff][lineAlarmState]
+	|
+	when (lineAlarmState == LineAlarmOn)
+		silence_line_alarm -> STATE[batteryAlarmState][medicineAlarmState][LineAlarmOff]
 	|
 	turn_off -> OFF
 ).
@@ -94,10 +108,14 @@ STATE[switch:SwitchT][power:PowerT][batteryState:BatteryStateT] =
 	when (switch == SwitchOn && power == BatteryPower && batteryState == BatteryLow) 
 		battery_dead -> STATE[SwitchOff][BatteryPower][BatteryDead]
 	|
-	// When AC power is ready, switch to AC power and recharge the battery 
-	when (power == BatteryPower && (batteryState == BatteryLow || batteryState == BatteryDead))
-		power_ready -> STATE[switch][ACPower][BatteryFull]
-)/{turn_off/battery_dead, sound_battery_alarm/low_battery}.
+	// When AC power is ready, switch to AC power 
+	when (power == BatteryPower)
+		power_ready -> STATE[switch][ACPower][batteryState]
+	|
+	// When battery is dead and AC power is on, charge it
+	when (power == ACPower && batteryState == BatteryDead)
+		charge_dead_battery -> STATE[switch][ACPower][BatteryFull]
+).///{turn_off/battery_dead, sound_battery_alarm/low_battery, silence_battery_alarm/charge_dead_battery}.
 
 // Initial state of LINE is off
 LINE = OFF,
@@ -127,7 +145,7 @@ STATE[lineState:LineStateT][medicineState:MedicineStateT] =
 	// If system turned off
 	turn_off -> OFF
 )/{sound_line_alarm/line_blocked, sound_medicine_alarm/medicine_empty,
-    silence_alarm/line_unblocked, silence_alarm/refill_medicine}.
+    silence_line_alarm/line_unblocked, silence_medicine_alarm/refill_medicine}.
 // Here we assume the alarm can only be silenced once the problem is solved
 // Or it will keep ringing
 
