@@ -115,7 +115,7 @@ STATE[switch:SwitchT][power:PowerT][batteryState:BatteryStateT] =
 	// When battery is dead and AC power is on, charge it
 	when (power == ACPower && batteryState == BatteryDead)
 		charge_dead_battery -> STATE[switch][ACPower][BatteryFull]
-).///{turn_off/battery_dead, sound_battery_alarm/low_battery, silence_battery_alarm/charge_dead_battery}.
+)/{turn_off/battery_dead, sound_battery_alarm/low_battery, silence_battery_alarm/charge_dead_battery}.
 
 // Initial state of LINE is off
 LINE = OFF,
