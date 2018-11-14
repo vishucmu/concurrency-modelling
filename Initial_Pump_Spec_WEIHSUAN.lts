@@ -1,0 +1,462 @@
+//
+// 17-651: FSP model of a simple infusion pump
+//
+// ASSUMPTIONS
+// - The user can choose, in the setup phase, which item of info to enter next.
+// - The simple enter_value action is a simple number pad where the user enters
+//   numeric values.
+// - There exist 'set' and 'cancel' buttons, which are the targets of press_set
+//   and press_cancel.
+// - When the user turns the unit off, the unit will be in a state as if it was
+//   just plugged in.
+//
+
+//
+// Set of actions that the user of the LTSA tool can control in an
+// animation of this model.
+//
+menu UserControlMenu = {
+    change_settings, clear_rate, confirm_settings, connect_set,
+    dispense_main_med_flow, enter_value, erase_and_unlock_line,
+    flow_unblocked, sound_alarm, lock_unit, plug_in, press_cancel, 
+    press_set, set_rate, silence_alarm, turn_off, unlock_unit, unplug,
+    flow_blocked
+}
+
+const SwitchOn = 0
+const SwitchOff = 1
+range SwitchT = SwitchOn..SwitchOff
+
+const ACPower = 2
+const BatteryPower = 3
+range PowerT = ACPower..BatteryPower
+
+const BatteryFull = 4
+const BatteryLow = 5
+const BatteryDead = 6
+range BatteryStateT = BatteryFull..BatteryDead
+
+const AlarmActivated = 7    // Alarm currently active
+const AlarmSilenced  = 8    // Alarm currently inactive
+range AlarmStateT = AlarmActivated .. AlarmSilenced
+
+const LineBlocked = 9
+const LineUnblocked = 10
+range LineStateT = LineBlocked..LineUnblocked
+
+const MedicineSufficient = 11
+const MedicineEmpty = 12
+range MedicineStateT = MedicineSufficient..MedicineEmpty
+
+ALARM = OFF,
+OFF = (turn_on -> STATE[AlarmSilenced]),
+STATE[alarmState:AlarmStateT] =
+(
+	when (alarmState == AlarmActivated) 
+		silence_alarm -> STATE[AlarmSilenced]
+	|
+	when (alarmState == AlarmSilenced) 
+		sound_block_alarm -> STATE[AlarmActivated]
+	|
+	when (alarmState == AlarmSilenced) 
+		sound_medicine_alarm -> STATE[AlarmActivated]
+	|
+	when (alarmState == AlarmSilenced) 
+		sound_battery_alarm -> STATE[AlarmActivated]
+	|
+	turn_off -> OFF
+).
+
+POWER = STATE[SwitchOff][ACPower][BatteryFull],
+STATE[switch:SwitchT][power:PowerT][batteryState:BatteryStateT] =
+(
+	// Turn on switch
+	// Can only do so when AC power is ready or battery is not dead
+	when (switch == SwitchOff && power == ACPower) 
+		turn_on -> STATE[SwitchOn][power][batteryState]
+	|
+	when (switch == SwitchOff && power == BatteryPower && batteryState != BatteryDead) 
+		turn_on -> STATE[SwitchOn][power][batteryState]
+	|
+	// Turn off switch
+	when (switch == SwitchOn) 
+		turn_off -> STATE[SwitchOff][power][batteryState]
+	|
+	// When AC power fails, switch to battery
+	when (power == ACPower) 
+		power_fail -> STATE[switch][BatteryPower][batteryState]
+	|
+	// When battery runs low
+	when (switch == SwitchOn && power == BatteryPower && batteryState == BatteryFull) 
+		battery_low -> STATE[SwitchOn][BatteryPower][BatteryLow]
+	|
+	// When battery runs dead
+	when (switch == SwitchOn && power == BatteryPower && batteryState == BatteryLow) 
+		battery_dead -> STATE[SwitchOff][BatteryPower][BatteryDead]
+	|
+	// When AC power is ready, switch to AC power and recharge the battery 
+	when (power == BatteryPower && (batteryState == BatteryLow || batteryState == BatteryDead))
+		power_ready -> STATE[switch][ACPower][BatteryFull]
+)/{turn_off/battery_dead, sound_battery_alarm/low_battery}.
+
+// Initial state of LINE is off
+LINE = OFF,
+OFF = (turn_on -> STATE[LineUnblocked][MedicineEmpty]),
+STATE[lineState:LineStateT][medicineState:MedicineStateT] =
+(
+	// Dispense medicine
+	when (lineState != LineBlocked && medicineState != MedicineEmpty)
+		 dispense_main_med_flow -> STATE[lineState][medicineState]
+	|
+	// Blocked line detected
+	when (lineState == LineUnblocked)
+		line_blocked -> STATE[LineBlocked][medicineState]
+	|
+	// Medicine empty detected
+	when (medicineState == MedicineSufficient)
+		medicine_empty -> STATE[lineState][MedicineEmpty]
+	|
+	// Unblock line
+	when (lineState == LineBlocked)
+		line_unblocked -> STATE[LineUnblocked][medicineState]	
+	|
+	// Medicine refilled
+	when (medicineState == MedicineEmpty)
+		refill_medicine -> STATE[lineState][MedicineSufficient]
+	|
+	// If system turned off
+	turn_off -> OFF
+)/{sound_line_alarm/line_blocked, sound_medicine_alarm/medicine_empty,
+    silence_alarm/line_unblocked, silence_alarm/refill_medicine}.
+// Here we assume the alarm can only be silenced once the problem is solved
+// Or it will keep ringing
+
+||SYSTEM = (POWER || ALARM || LINE).
+
+/*
+LINE = STATE[SwitchOff][ACPower][BatteryFull][AlarmSilenced][LineUnblocked][MedicineEmpty],
+STATE[switch:SwitchT][power:PowerT][batteryState:BatteryStateT][alarmState:AlarmStateT][lineState:LineStateT][medicineState:MedicineStateT] =
+(
+	// Turn on switch
+	// Can only do so when AC power is ready or battery is not dead
+	when (switch == SwitchOff && power == ACPower) 
+		turn_on -> STATE[SwitchOn][power][batteryState][alarmState][lineState][medicineState]
+	|
+	when (switch == SwitchOff && power == BatteryPower && batteryState != BatteryDead) 
+		turn_on -> STATE[SwitchOn][power][batteryState][alarmState][lineState][medicineState]
+	|
+	// Turn off switch
+	when (switch == SwitchOn) 
+		turn_off -> STATE[SwitchOff][power][batteryState][alarmState][lineState][medicineState]
+	|
+	// When AC power fails, switch to battery
+	when (power == ACPower) 
+		power_fail -> STATE[switch][BatteryPower][batteryState][alarmState][lineState][medicineState]
+	|
+	// When battery runs low
+	when (switch == SwitchOn && power == BatteryPower && batteryState == BatteryFull) 
+		battery_low -> STATE[SwitchOn][BatteryPower][BatteryLow][alarmState][lineState][medicineState]
+	|
+	// When battery runs dead
+	when (switch == SwitchOn && power == BatteryPower && batteryState == BatteryLow) 
+		battery_dead -> STATE[SwitchOn][BatteryPower][BatteryDead][alarmState][lineState][medicineState]
+	|
+	// When AC power is ready, switch to AC power and recharge the battery 
+	when (power == BatteryPower && (batteryState == BatteryLow || batteryState == BatteryDead))
+		power_ready -> STATE[switch][ACPower][BatteryFull][alarmState][lineState][medicineState]
+	|
+	// Dispense medicine
+	when (switch == SwitchOn && lineState != LineBlocked && medicineState != MedicineEmpty)
+		 dispense_main_med_flow -> STATE[switch][power][batteryState][alarmState][lineState][medicineState]
+	|
+	// Blocked line detected
+	when (switch == SwitchOn && lineState == LineUnblocked)
+		line_blocked -> STATE[switch][power][batteryState][alarmState][LineBlocked][medicineState]
+	|
+	// Unblock line
+	when (switch == SwitchOn && lineState == LineBlocked)
+		line_unblocked -> STATE[switch][power][batteryState][alarmState][LineUnblocked][medicineState]
+	|
+	// Medicine empty detected
+	when (switch == SwitchOn && medicineState == MedicineSufficient)
+		line_unblocked -> STATE[switch][power][batteryState][alarmState][lineState][MedicineEmpty]
+	|
+	// Medicine refilled
+	when (switch == SwitchOn && medicineState == MedicineEmpty)
+		line_unblocked -> STATE[switch][power][batteryState][alarmState][lineState][MedicineSufficient]
+	|
+	// Alarm silenced
+	when (switch == SwitchOn && alarmState == AlarmActivated)
+		silence_alarm -> STATE[switch][power][batteryState][AlarmSilenced][lineState][medicineState]
+).
+*/	
+		
+	
+	
+
+/*
+//======================
+// Constants and Ranges
+//======================
+
+//
+// States of the pump alarm
+//
+const AlarmActivated = 0    // Alarm currently active
+const AlarmSilenced  = 1    // Alarm currently inactive
+
+range AlarmStateT = AlarmActivated .. AlarmSilenced
+
+ALARM = STATE[AlarmSilenced],
+STATE[alarmState:AlarmStateT] =
+(
+	when (alarmState == AlarmActivated) silence_alarm -> STATE[AlarmSilenced]
+	|
+	when (alarmState == AlarmSilenced) sound_block_alarm -> STATE[AlarmActivated]
+	|
+	when (alarmState == AlarmSilenced) sound_empty_alarm -> STATE[AlarmActivated]
+	|
+	when (alarmState == AlarmSilenced) sound_battery_alarm -> STATE[AlarmActivated]
+).
+
+//
+// Pump in infusion mode:
+// - Always be able to turn the unit off, even if locked
+// - Allow the user to lock/unlock the unit
+// - Errors could occur with the pump (e.g., line became pinched or plugged)
+//
+LINE  =
+(
+    dispense_main_med_flow -> LINE
+    |
+    flow_blocked -> LINE_BLOCKED[AlarmActivated]
+    |
+    medicine_empty -> NO_MEDICINE[AlarmActivated]
+),
+
+//
+// Pump stuck (medication flow suspended)
+//
+LINE_BLOCKED[alarm:AlarmStateT]  =
+(
+    when (alarm == AlarmActivated)
+        sound_block_alarm -> LINE_BLOCKED[alarm]
+    |
+    when (alarm == AlarmActivated)
+        silence_alarm -> LINE_BLOCKED[AlarmSilenced]
+    |
+    flow_unblocked -> LINE
+),
+
+//
+// No medicine (medicine empty)
+//
+NO_MEDICINE[alarm:AlarmStateT]  =
+(
+    when (alarm == AlarmActivated)
+        sound_empty_alarm -> NO_MEDICINE[alarm]
+    |
+    when (alarm == AlarmActivated)
+        silence_alarm -> NO_MEDICINE[AlarmSilenced]
+    |
+    refill_medicine -> LINE
+)/{sound_block_alarm/flow_blocked, sound_empty_alarm/medicine_empty}.
+
+const PowerOn = 8
+const PowerOff = 9
+range PowerT = PowerOn..PowerOff
+const Battery = 10
+const LowBattery = 11
+const BatteryDead = 12
+const ACPower = 13
+range SourceT = Battery..ACPower
+POWER = POWERSYSTEM[PowerOff][ACPower],
+POWERSYSTEM[power:PowerT][source:SourceT] = (
+	when (power == PowerOff) turn_on -> POWERSYSTEM[PowerOn][source]
+	|
+	when (power == PowerOn) turn_off -> POWERSYSTEM[PowerOff][source]
+	|
+	when (source == Battery) power_ready -> POWERSYSTEM[power][ACPower]
+            |
+            when (source == Battery) low_battery -> POWERSYSTEM[power][LowBattery]
+	|
+	when (source == ACPower) power_fail -> POWERSYSTEM[power][Battery]
+	|
+	when (source == LowBattery) battery_used_up -> POWERSYSTEM[PowerOff][BatteryDead] 
+            | 
+            when (source == LowBattery) power_ready -> POWERSYSTEM[power][ACPower]
+	|
+	when (source == BatteryDead) power_ready -> POWERSYSTEM[power][ACPower]
+)/{sound_battery_alarm/low_battery}.
+// Rename low_battery to synchronize with sound_alarm
+
+property PWR = POWERSYSTEM[PowerOff][source:SourceT],
+//POWERSYSTEM[PowerOff][source],
+POWERSYSTEM[power:PowerT][source:SourceT] = (
+	turn_on -> POWERSYSTEM[PowerOn][source]
+	|
+	when (source == Battery) power_ready -> POWERSYSTEM[power][ACPower]
+            |
+            when (source == Battery) low_battery -> POWERSYSTEM[power][LowBattery]
+	|
+	when (source == ACPower) power_fail -> POWERSYSTEM[power][Battery]
+	|
+	when (source == LowBattery) battery_used_up -> POWERSYSTEM[PowerOff][BatteryDead] 
+            | 
+            when (source == LowBattery) power_ready -> POWERSYSTEM[power][ACPower]
+	|
+	when (source == BatteryDead) power_ready -> POWERSYSTEM[power][ACPower]
+)/{sound_battery_alarm/low_battery}.
+// Rename low_battery to synchronize with sound_alarm
+
+property NOACTIONAFTERBATTERYDEAD =
+(
+	battery_used_up -> power_ready -> NOACTIONAFTERBATTERYDEAD
+) +
+{
+	silence_alarm, sound_alarm, dispense_main_med_flow, flow_blocked,
+	medicine_empty, flow_unblocked, refill_medicine, turn_on, turn_off,
+	low_battery, power_fail
+}.
+
+property NOACTIONAFTERTURNOFF =
+(
+	turn_off -> turn_on -> NOACTIONAFTERTURNOFF
+) +
+{
+	silence_alarm, sound_alarm, dispense_main_med_flow, flow_blocked,
+	medicine_empty, flow_unblocked, refill_medicine, low_battery, battery_used_up
+}.
+||PUMP = (LINE || ALARM || POWER || NOACTIONAFTERBATTERYDEAD).
+*/
+/*
+//
+// States of the pump settings
+//
+const ParamsNotSet = 2    // pump parameters not set yet
+const ParamsSet    = 3    // pump parameters already set
+
+range ParamsStateT = ParamsNotSet .. ParamsSet
+
+//
+// Locked/unlocked states of a line with respect to a pump channel
+//
+const LineUnlocked = 4  // line not locked into a pump channel 
+const LineLocked   = 5  // line locked into a pump channel
+
+range LineLockStateT = LineUnlocked .. LineLocked
+
+//
+// Locked/unlocked states of the pump unit
+//
+const UnitUnlocked = 6  // the keypad of the pump is not locked
+const UnitLocked   = 7  // the keypad of the pump is locked
+
+range UnitLockStateT = UnitUnlocked .. UnitLocked
+
+//=====================
+// Process Definitions
+//=====================
+
+PUMP = UNPLUGGED,
+
+UNPLUGGED =
+(
+    plug_in -> POWER_OFF
+),
+
+POWER_OFF = 
+(
+    turn_on -> SETUP[ParamsNotSet][LineUnlocked]
+),
+
+//
+// Pump in setup mode:
+// - Once required pump parameters (just rate in this case) are set,
+//   physical connections can be made and line can be locked
+//
+SETUP[params:ParamsStateT][lineLock:LineLockStateT] = 
+(
+    unplug -> UNPLUGGED
+    |
+    turn_off -> POWER_OFF
+    |
+    when (params == ParamsNotSet && lineLock == LineUnlocked)
+        set_rate -> enter_value ->
+            (press_set -> SETUP[ParamsSet][lineLock]
+             |
+             press_cancel -> SETUP[ParamsNotSet][lineLock])
+    |
+    when (params == ParamsSet && lineLock == LineUnlocked)
+        clear_rate -> SETUP[ParamsNotSet][lineLock]
+    |
+    when (params == ParamsSet && lineLock == LineUnlocked)
+        connect_set -> purge_air -> lock_line -> SETUP[params][LineLocked]
+    |
+    when (lineLock == LineLocked)
+        confirm_settings -> INFUSION[UnitUnlocked]
+    |
+    when (lineLock == LineLocked)
+        erase_and_unlock_line -> SETUP[params][LineUnlocked]
+),
+
+//
+// Pump in infusion mode:
+// - Always be able to turn the unit off, even if locked
+// - Allow the user to lock/unlock the unit
+// - Errors could occur with the pump (e.g., line became pinched or plugged)
+//
+INFUSION[unitLock:UnitLockStateT] =
+(
+    unplug -> UNPLUGGED
+    |
+    turn_off -> POWER_OFF
+    |
+    when (unitLock == UnitUnlocked)
+        change_settings -> SETUP[ParamsSet][LineLocked]
+    |
+    when (unitLock == UnitUnlocked)
+        lock_unit -> INFUSION[UnitLocked]
+    |
+    when (unitLock == UnitLocked)
+        unlock_unit -> INFUSION[UnitUnlocked]
+    |
+    dispense_main_med_flow -> INFUSION[unitLock]
+    |
+    flow_blocked -> sound_alarm -> INFUSION_BLOCKED[unitLock][AlarmActivated]
+),
+
+//
+// Pump stuck (medication flow suspended)
+//
+INFUSION_BLOCKED[unitLock:UnitLockStateT][alarm:AlarmStateT] =
+(
+    unplug -> UNPLUGGED
+    |
+    turn_off -> POWER_OFF
+    |
+    when (alarm == AlarmActivated)
+        sound_alarm -> INFUSION_BLOCKED[unitLock][alarm]
+    |
+    when (alarm == AlarmActivated)
+        silence_alarm -> INFUSION_BLOCKED[unitLock][AlarmSilenced]
+    |
+    flow_unblocked -> INFUSION[unitLock]
+).
+
+
+
+
+
+
+//
+const LineUnlocked = 4  // line not locked into a pump channel 
+const LineLocked   = 5  // line locked into a pump channel
+
+range LineLockStateT = LineUnlocked .. LineLocked
+*/
+
+
+
+
+
