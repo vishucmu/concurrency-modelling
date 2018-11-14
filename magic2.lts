@@ -1,0 +1,249 @@
+//
+// 17-651: FSP model of a simple infusion pump
+//
+// ASSUMPTIONS
+// - The user can choose, in the setup phase, which item of info to enter next.
+// - The simple enter_value action is a simple number pad where the user enters
+//   numeric values.
+// - There exist 'set' and 'cancel' buttons, which are the targets of press_set
+//   and press_cancel.
+// - When the user turns the unit off, the unit will be in a state as if it was
+//   just plugged in.
+//
+
+//
+// Set of actions that the user of the LTSA tool can control in an
+// animation of this model.
+//
+menu UserControlMenu = {
+    change_settings, clear_rate, confirm_settings, connect_set,
+    dispense_main_med_flow, enter_value, erase_and_unlock_line,
+    flow_unblocked, sound_alarm, lock_unit, plug_in, press_cancel, 
+    press_set, set_rate, silence_alarm, turn_off, unlock_unit, unplug,
+    flow_blocked, turn_on, purge_air, lock_line
+}
+
+//======================
+// Constants and Ranges
+//======================
+
+//
+// States of the pump alarm
+//
+const AlarmActivated = 0    // Alarm currently active
+const AlarmSilenced  = 1    // Alarm currently inactive
+
+range AlarmStateT = AlarmActivated .. AlarmSilenced
+
+//
+// States of the pump settings
+//
+const ParamsNotSet = 2    // pump parameters not set yet
+const ParamsSet    = 3    // pump parameters already set
+
+range ParamsStateT = ParamsNotSet .. ParamsSet
+
+//
+// Locked/unlocked states of a line with respect to a pump channel
+//
+const LineUnlocked = 4  // line not locked into a pump channel 
+const LineLocked   = 5  // line locked into a pump channel
+
+range LineLockStateT = LineUnlocked .. LineLocked
+
+//
+// Locked/unlocked states of the pump unit
+//
+const UnitUnlocked = 6  // the keypad of the pump is not locked
+const UnitLocked   = 7  // the keypad of the pump is locked
+
+range UnitLockStateT = UnitUnlocked .. UnitLocked
+
+// 
+// Line indexes
+// 
+const LineMinIndex = 8
+const LineMaxIndex = 9
+
+range LineIndexT = LineMinIndex .. LineMaxIndex
+
+// //
+// // Line rate
+// //
+// const RateMin    = 0
+// const RateMax    = 3
+
+// range RateRangeT = RateMin .. RateMax
+
+// 
+// States of Power
+// 
+const PowerOn = 10
+const PowerOff = 11
+range PowerStateT = PowerOn..PowerOff
+
+//
+// Sources of Power
+//
+const PowerSourceAC = 12
+const PowerSourceBattery = 13
+const PowerSourceBatteryLow = 14
+const PowerSourceNone = 15
+range PowerSourceT = PowerSourceAC..PowerSourceNone
+
+//
+// States of param rediness
+//
+const ParamNotReadyToSet = 16
+const ParamReadyToSet = 17
+range ParamReadyT = ParamNotReadyToSet..ParamReadyToSet
+
+//
+//  States of line connection
+//
+const LineNotReadyToLock = 18
+const LineReadyToLock = 19
+range LineReadyT = LineNotReadyToLock..LineReadyToLock
+
+// Power part
+POWER = POWERSYETEM[PowerOff][PowerSourceNone],
+POWERSYETEM[powerState:PowerStateT][powerSource:PowerSourceT] = (
+    when (powerState == PowerOn) 
+        pump_on -> (
+            action -> POWERSYETEM[PowerOn][powerSource]
+            |
+            turn_off -> POWERSYETEM[PowerOff][powerSource]
+        )
+    |
+    when (powerState == PowerOff && powerSource != PowerSourceNone) 
+        turn_on -> POWERSYETEM[PowerOn][powerSource]
+    |
+    when (powerSource == PowerSourceAC) 
+        unplug -> POWERSYETEM[powerState][PowerSourceBattery]
+    |
+    when (powerSource != PowerSourceAC) 
+        plug_in -> POWERSYETEM[powerState][PowerSourceAC]
+    |
+    when (powerSource == PowerSourceBattery) 
+        low_battery -> POWERSYETEM[powerState][PowerSourceBatteryLow]
+    |
+    when (powerSource == PowerSourceBatteryLow) 
+        battery_used_up -> POWERSYETEM[PowerOff][PowerSourceNone]
+).
+
+// Unit part
+UNIT = UNITSTATE[UnitUnlocked],
+UNITSTATE[unitLock:UnitLockStateT] = (
+    pump_on -> (
+        no_action -> UNITSTATE[unitLock]
+        |
+        action -> (
+            when (unitLock == UnitUnlocked)
+                lock_unit -> UNITSTATE[UnitLocked]
+            |
+            when (unitLock == UnitLocked)
+                unlock_unit -> UNITSTATE[UnitUnlocked]
+        )
+        |
+        unit_state[unitLock] -> UNITSTATE[unitLock]
+    )
+)\{no_action}.
+
+// Line part
+LINE(LineIndex=LineMinIndex) = LINESETUP[LineIndex][ParamsNotSet][LineUnlocked],
+LINESETUP[lineIndex:LineIndexT][params:ParamsStateT][lineLock:LineLockStateT] = (
+    pump_on -> (
+        no_action -> LINESETUP[lineIndex][params][lineLock]
+        |
+        action -> (
+            when (params == ParamsNotSet && lineLock == LineUnlocked) 
+                set_rate -> LINESETPARAM[lineIndex][ParamNotReadyToSet]
+            |
+            when (params == ParamsSet && lineLock == LineUnlocked) 
+                clear_rate -> LINESETUP[lineIndex][ParamsNotSet][LineUnlocked]
+            |
+            when (lineLock == LineLocked) 
+                confirm_settings -> INFUSION[lineIndex][UnitUnlocked]
+        )
+    )
+    |
+    when (params == ParamsSet && lineLock == LineUnlocked) 
+        connect_set -> LINECONNECT[lineIndex][LineNotReadyToLock]
+    |
+    when (lineLock == LineLocked) 
+        erase_and_unlock_line -> LINESETUP[lineIndex][params][LineUnlocked]
+),
+LINECONNECT[lineIndex:LineIndexT][readyToLock:LineReadyT] = (
+    pump_on -> (
+        no_action -> LINECONNECT[lineIndex][readyToLock]
+        |
+        action -> LINECONNECT[lineIndex][readyToLock]
+    )
+    |
+    when (readyToLock == LineNotReadyToLock) 
+        purge_air -> LINECONNECT[lineIndex][LineReadyToLock]
+    |
+    when (readyToLock == LineReadyToLock)
+        lock_line -> LINESETUP[lineIndex][ParamsSet][LineLocked]
+),
+LINESETPARAM[lineIndex:LineIndexT][readyToSet:ParamReadyT] = (
+    pump_on -> (
+        no_action -> LINESETPARAM[lineIndex][readyToSet]
+        |
+        action -> (
+            press_cancel -> LINESETUP[lineIndex][ParamsNotSet][LineUnlocked]
+            |
+            when (ParamNotReadyToSet) 
+                enter_value -> LINESETPARAM[lineIndex][ParamReadyToSet]
+            |
+            when (ParamReadyToSet) 
+                press_set -> LINESETUP[lineIndex][ParamsSet][LineUnlocked]
+        )
+    )
+),
+INFUSION[lineIndex:LineIndexT][unitLock:UnitLockStateT] = (
+    pump_on -> (
+        no_action -> INFUSION[lineIndex][unitLock]
+        |
+        action -> (
+            unit_state[UnitUnlocked] -> change_settings -> LINESETUP[lineIndex][ParamsSet][LineLocked]
+            |
+            dispense_main_med_flow -> INFUSION[lineIndex][unitLock]
+            |
+            flow_blocked -> INFUSION_BLOCKED[lineIndex][unitLock]
+        )
+    )
+),
+INFUSION_BLOCKED[lineIndex:LineIndexT][unitLock:UnitLockStateT] = (
+    pump_on -> (
+        no_action -> INFUSION_BLOCKED[lineIndex][unitLock]
+        |
+        action -> INFUSION_BLOCKED[lineIndex][unitLock]
+    )
+    |
+    flow_unblocked -> INFUSION[lineIndex][unitLock]
+)\{no_action}.
+
+// Alarm part
+ALARM = ALARM_STATE[AlarmSilenced],
+ALARM_STATE[alarmState:AlarmStateT] =
+(
+    pump_on -> (
+        no_action -> ALARM_STATE[alarmState]
+        |
+        action -> (
+            when (alarmState == AlarmActivated)
+                silence_alarm -> ALARM_STATE[AlarmSilenced]
+            |
+            flow_blocked -> ALARM_STATE[AlarmActivated]
+            |
+            medicine_empty -> ALARM_STATE[AlarmActivated]
+            |
+            low_battery -> ALARM_STATE[AlarmActivated]
+            |
+            no_action -> ALARM_STATE[AlarmActivated]
+        )
+    )
+)\{no_action}.
+
+||PUMP = ({line[LineIndexT]} :: power : POWER || forall [index:LineIndexT] line[index] : LINE || {line[LineIndexT]} :: unit : UNIT || {line[LineIndexT]} :: alarm : ALARM).
