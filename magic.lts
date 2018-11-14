@@ -74,8 +74,8 @@ range PowerSourceT = PowerSourceAC..PowerSourceNone
 //
 // States of flow
 //
-const FlowUnblocked = 20
-const FlowBlocked = 21
+const FlowUnblocked = 16
+const FlowBlocked = 17
 range FlowStateT = FlowUnblocked..FlowBlocked
 
 //
@@ -195,12 +195,12 @@ UNIT = UNITOFF,
 UNITOFF = (
     turn_on -> UNITSTATE[UnitUnlocked]
 ),
-UNITSTATE[unitLock:UnitLockStateT] = (
+UNITSTATE[unitLock:UnitLockStateT][lineIndex:LineIndexT] = (
     when (unitLock == UnitLocked)
         unlock_unit -> UNITSTATE[UnitUnlocked]
     |
     when (unitLock == UnitUnlocked)
-        lock_unit -> UNITSTATE[UnitLocked]
+        lock_unit -> dispense_main_med_flow[lineIndex] -> UNITSTATE[UnitLocked]
     |
     when (unitLock == UnitUnlocked)
         set_rate[lineIndex:LineIndexT] -> (
@@ -215,13 +215,13 @@ UNITSTATE[unitLock:UnitLockStateT] = (
             )
         )
     |
-    when (unitLock == UnitLocked)
-        confirm_settings[lineIndex:LineIndexT] -> UNITSTATE[UnitUnlocked]
+    when (unitLock == UnitUnlocked)
+        confirm_settings[lineIndex:LineIndexT] -> UNITSTATE[Unitlocked]
     |
-    when (unitLock == UnitLocked)
+    when (unitLock == UnitUnlocked)
         change_settings[lineIndex:LineIndexT] -> UNITSTATE[UnitUnlocked]
     |
-    when (unitLock == UnitLocked)
+    when (unitLock == UnitUnlocked)
         clear_rate[lineIndex:LineIndexT] -> UNITSTATE[UnitUnlocked]
     |
     silence_alarm -> UNITSTATE[unitLock]
