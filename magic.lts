@@ -257,3 +257,25 @@ ALARM_STATE[alarmState:AlarmStateT] =
 	low_battery/line[LineIndexT].low_battery
 } \ {line[LineIndexT].unit_state[UnitLockStateT]}.
 //change_settings, clear_rate, confirm_settings, connect_set, dispense_main_med_flow, enter_value, erase_and_unlock_line, flow_unblocked, press_cancel, press_set, set_rate, flow_blocked, purge_air, lock_line
+
+fluent BATTERYALARMON =
+	<{low_battery}, {silence_alarm, plug_in}>
+fluent MEDICINEALARMON =
+	<{medicine_empty}, {silence_alarm, refill_medicine}>
+fluent LINEALARMON =
+	<{flow_blocked}, {silence_alarm, line_unblocked}>
+fluent BATTERYDEAD =
+	<{battery_dead}, {charge_dead_battery}>
+fluent PUMPSET =
+	<{confirm_setting}, {reset_setting}>
+
+assert NOPUMPINGWHENBATTERYDEAD =
+	[](BATTERYDEAD -> !dispense_main_med_flow)
+assert SETBEFOREPUMP =
+	[](!PUMPSET -> !dispense_main_med_flow)
+assert BATTERYALARMWILLSOUND =
+	[](sound_battery_alarm -> <>BATTERYALARMON)
+assert MEDICINEALARMWILLSOUND =
+	[](sound_medicine_alarm -> <>MEDICINEALARMON)
+assert LINEALARMWILLSOUND =
+	[](sound_line_alarm -> <>LINEALARMON)
