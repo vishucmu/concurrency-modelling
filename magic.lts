@@ -11,18 +11,6 @@
 //   just plugged in.
 //
 
-//
-// Set of actions that the user of the LTSA tool can control in an
-// animation of this model.
-//
-menu UserControlMenu = {
-    change_settings, clear_rate, confirm_settings, connect_set,
-    dispense_main_med_flow, enter_value, erase_and_unlock_line,
-    flow_unblocked, sound_alarm, lock_unit, plug_in, press_cancel, 
-    press_set, set_rate, silence_alarm, turn_off, unlock_unit, unplug,
-    flow_blocked, turn_on, purge_air, lock_line
-}
-
 //======================
 // Constants and Ranges
 //======================
@@ -42,11 +30,6 @@ const ParamsNotSet = 2    // pump parameters not set yet
 const ParamsSet    = 3    // pump parameters already set
 
 range ParamsStateT = ParamsNotSet .. ParamsSet
-// const ParamsNotSet = 2
-// const ParamRateSet = 3
-// const ParamValueEntered = 4
-// const ParamsSet = 5
-// range ParamsStateT = ParamsNotSet..ParamsSet
 
 //
 // Locked/unlocked states of a line with respect to a pump channel
@@ -72,14 +55,6 @@ const LineMaxIndex = 9
 
 range LineIndexT = LineMinIndex .. LineMaxIndex
 
-// //
-// // Line rate
-// //
-// const RateMin    = 0
-// const RateMax    = 3
-
-// range RateRangeT = RateMin .. RateMax
-
 // 
 // States of Power
 // 
@@ -96,21 +71,24 @@ const PowerSourceBatteryLow = 14
 const PowerSourceNone = 15
 range PowerSourceT = PowerSourceAC..PowerSourceNone
 
-// //
-// //  States of line connection
-// //
-// const LineNotConnected = 16
-// const LineConnectedSet = 17
-// const LineAirpurged = 18
-// const LineLocked = 19
-// range LineStateT = LineNotConnected..LineLocked
-
 //
 // States of flow
 //
 const FlowUnblocked = 20
 const FlowBlocked = 21
 range FlowStateT = FlowUnblocked..FlowBlocked
+
+//
+// Set of actions that the user of the LTSA tool can control in an
+// animation of this model.
+//
+menu UserControlMenu = {
+    change_settings[LineIndexT], clear_rate[LineIndexT], confirm_settings[LineIndexT], connect_set[LineIndexT],
+    dispense_main_med_flow[LineIndexT], enter_value[LineIndexT], erase_and_unlock_line[LineIndexT],
+    flow_unblocked[LineIndexT], sound_alarm, lock_unit, plug_in, press_cancel[LineIndexT], 
+    press_set[LineIndexT], set_rate[LineIndexT], silence_alarm, turn_off, unlock_unit, unplug,
+    flow_blocked[LineIndexT], turn_on, purge_air[LineIndexT], lock_line[LineIndexT]
+}
 
 // Power part
 POWER = POWERSYETEM[PowerOff][PowerSourceNone],
@@ -147,7 +125,7 @@ LINESTATE[lineIndex:LineIndexT][lineLock:LineLockStateT] = (
         confirm_settings[lineIndex] -> LINEPUMP[lineIndex]
 ),
 LINEPUMP[lineIndex:LineIndexT] = (
-    change_settings[lineIndex] -> LINESTATE[lineIndex][LineLocked][MedicineRemain]
+    change_settings[lineIndex] -> LINESTATE[lineIndex][LineLocked]
     |
     medicine_used_up[lineIndex] -> change_medicine[lineIndex] -> LINESTATE[lineIndex][LineLocked]
     |
@@ -171,7 +149,7 @@ INFUSIONSETUP[lineIndex:LineIndexT][params:ParamsStateT] = (
         clear_rate[lineIndex] -> INFUSIONSETUP[lineIndex][ParamsNotSet]
 	|
     when (params == ParamsSet) 
-        confirm_settings[lineIndex] -> INFUSIONPUMP[lineIndex][FlowUnblocked]
+        confirm_settings[lineIndex] -> INFUSIONPUMP[lineIndex]
     |
     turn_off -> INFUSIONOFF[lineIndex]
 	|
@@ -184,11 +162,11 @@ INFUSIONPUMP[lineIndex:LineIndexT] = (
     |
     dispense_main_med_flow[lineIndex] -> INFUSIONPUMP[lineIndex]
     |
-    main_med_flow_finish[lineIndex] -> LINESETUP[lineIndex][ParamsNotSet]
+    main_med_flow_finish[lineIndex] -> INFUSIONSETUP[lineIndex][ParamsNotSet]
     |
-    turn_off -> LINEOFF[lineIndex][LineLocked]
+    turn_off -> INFUSIONOFF[lineIndex]
 	|
-	battery_used_up -> LINEOFF[lineIndex][LineLocked]
+	battery_used_up -> INFUSIONOFF[lineIndex]
 ).
 
 // Alarm part
@@ -228,12 +206,12 @@ UNITSTATE[unitLock:UnitLockStateT] = (
         set_rate[lineIndex:LineIndexT] -> (
             battery_used_up -> UNITOFF
             |
-            enter_value[lineIndex:LineIndexT] -> (
+            enter_value[lineIndex] -> (
                 battery_used_up -> UNITOFF
                 |
-                press_set[lineIndex:LineIndexT] -> UNITSTATE[UnitUnlocked]
+                press_set[lineIndex] -> UNITSTATE[UnitUnlocked]
                 |
-                press_cancel[lineIndex:LineIndexT] -> UNITSTATE[UnitUnlocked]
+                press_cancel[lineIndex] -> UNITSTATE[UnitUnlocked]
             )
         )
     |
@@ -255,7 +233,6 @@ UNITSTATE[unitLock:UnitLockStateT] = (
 ).
 
 ||PUMP = (POWER || forall [index:LineIndexT] LINE(index) || forall [index:LineIndexT] INFUSION(index) || ALARM || UNIT).
-//change_settings, clear_rate, confirm_settings, connect_set, dispense_main_med_flow, enter_value, erase_and_unlock_line, flow_unblocked, press_cancel, press_set, set_rate, flow_blocked, purge_air, lock_line
 
 // fluent BATTERYALARMON =
 // 	<{low_battery}, {silence_alarm, plug_in}>
