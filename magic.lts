@@ -216,7 +216,7 @@ UNITSTATE[unitLock:UnitLockStateT][lineIndex:LineIndexT] = (
         )
     |
     when (unitLock == UnitUnlocked)
-        confirm_settings[lineIndex:LineIndexT] -> UNITSTATE[Unitlocked]
+        confirm_settings[lineIndex:LineIndexT] -> UNITSTATE[UnitLocked]
     |
     when (unitLock == UnitUnlocked)
         change_settings[lineIndex:LineIndexT] -> UNITSTATE[UnitUnlocked]
