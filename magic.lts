@@ -271,7 +271,7 @@ fluent MEDICINEERROR[lineIndex:LineIndexT] =
 	<{medicine_used_up[lineIndex]}, {change_medicine[lineIndex]}>
 assert PUMPWILLFINISHIFNOERROR =
 	forall[lineIndex:LineIndexT]
-		[] ((!FLOWERROR[lineIndex] && !MEDICINEERROR[lineIndex]) ->
+		[] ((!FLOWERROR[lineIndex] && !MEDICINEERROR[lineIndex] && dispense_main_med_flow[lineIndex]) ->
 	      	      <>main_med_flow_finish[lineIndex] )
 
 // fluent BATTERYALARMON =
