@@ -234,6 +234,46 @@ UNITSTATE[unitLock:UnitLockStateT]= (
 
 ||PUMP = (POWER || forall [index:LineIndexT] LINE(index) || forall [index:LineIndexT] INFUSION(index) || ALARM || UNIT).
 
+// 1. The pump cannot start pumping without the operator first confirming the settings on the pump.
+fluent PUMPSET[lineIndex:LineIndexT] =
+	<{confirm_settings[lineIndex]}, {turn_off, battery_used_up}>
+assert SETBEFOREDISPENSE =
+	forall[lineIndex:LineIndexT] [](!PUMPSET[lineIndex] -> !dispense_main_med_flow[lineIndex])
+
+// 3. If the backup battery power fails, pumping will not occur on any line.
+fluent BATTERYDEAD =
+	<{battery_used_up},  {plug_in}>
+assert NODISPENSEWITHDEADBATTERY =
+	forall[lineIndex:LineIndexT] [](BATTERYDEAD -> !dispense_main_med_flow[lineIndex])
+
+// 4. It is always possible to resume pumping after a failure.
+fluent POWERFAIL =
+	<{unplug}, {plug_in}>
+assert RESUMEDISPENSEPOSSIBLE =
+	forall[lineIndex:LineIndexT] [](POWERFAIL -> <>dispense_main_med_flow[lineIndex])
+
+// 5. An alarm will sound on any line failure
+fluent FLOWALARMON[lineIndex:LineIndexT] =
+	<{flow_blocked[lineIndex]}, {flow_unblocked[lineIndex], silence_alarm, turn_off, battery_used_up}>
+fluent MEDICINEALARMON[lineIndex:LineIndexT] =
+	<{medicine_used_up[lineIndex]}, {change_medicine[lineIndex], silence_alarm, turn_off, battery_used_up}>
+fluent BATTERYALARMON =
+	<{low_battery}, {plug_in, silence_alarm, turn_off, battery_used_up}>
+assert ALARMWILLSOUND =
+	forall[lineIndex:LineIndexT] 
+		[]((flow_blocked[lineIndex] || medicine_used_up[lineIndex] || low_battery) -> 
+		     <>(FLOWALARMON[lineIndex] || MEDICINEALARMON[lineIndex] || BATTERYALARMON))
+
+// 6. In the absence of errors the pump will continue to pump until the treatment is finished.
+fluent FLOWERROR[lineIndex:LineIndexT] =
+	<{flow_blocked[lineIndex]}, {flow_unblocked[lineIndex]}>
+fluent MEDICINEERROR[lineIndex:LineIndexT] =
+	<{medicine_used_up[lineIndex]}, {change_medicine[lineIndex]}>
+assert PUMPWILLFINISHIFNOERROR =
+	forall[lineIndex:LineIndexT]
+		[] ((!FLOWERROR[lineIndex] && !MEDICINEERROR[lineIndex]) ->
+	      	      <>main_med_flow_finish[lineIndex] )
+
 // fluent BATTERYALARMON =
 // 	<{low_battery}, {silence_alarm, plug_in}>
 // fluent MEDICINEALARMON =
