@@ -316,10 +316,8 @@ assert ELECTRICALFAILANYTIME =
 	[]((ELEFAIL -> [](!ELEFAIL)) || (!ELEFAIL -> <> ELEFAIL))
 
 // 3. If the backup battery power fails, pumping will not occur on any line.
-fluent BATTERYDEAD =
-	<{battery_used_up},  {plug_in}>
 assert NODISPENSEWITHDEADBATTERY =
-	[](forall[lineIndex:LineIndexT] (BATTERYDEAD -> !dispense_main_med_flow[lineIndex]))
+	[](forall[lineIndex:LineIndexT] (battery_used_up -> (!dispense_main_med_flow[lineIndex] U plug_in)))
 
 // 4. It is always possible to resume pumping after a failure.
 fluent POWERFAIL =
@@ -342,5 +340,5 @@ fluent PINCHERROR[lineIndex:LineIndexT] =
 	<{line_pinched[lineIndex]}, {line_unpinched[lineIndex]}>
 assert PUMPWILLFINISHIFNOERROR =
 	[] (forall[lineIndex:LineIndexT]
-		 (([]!FLOWERROR[lineIndex] && []!MEDICINEERROR[lineIndex] && []!PINCHERROR[lineIndex]) ->
-	      	      <>main_med_flow_finish[lineIndex] ))
+		 ((!FLOWERROR[lineIndex] && !MEDICINEERROR[lineIndex] && !PINCHERROR[lineIndex]) ->
+	      	      (<>main_med_flow_finish[lineIndex])))
