@@ -311,9 +311,9 @@ assert SETBEFOREDISPENSE =
 	(forall[lineIndex:LineIndexT] (!dispense_main_med_flow[lineIndex] U confirm_settings[lineIndex]))
 
 // 2. Electrical power can fail at any time.
-fluent ELEFAIL = <{unplug}, {plug_in}>
+fluent ELEON = <{plug_in}, {unplug}>
 assert ELECTRICALFAILANYTIME =
-	[]((ELEFAIL -> [](!ELEFAIL)) || (!ELEFAIL -> <> ELEFAIL))
+	[](ELEON -> []<>unplug)
 
 // 3. If the backup battery power fails, pumping will not occur on any line.
 assert NODISPENSEWITHDEADBATTERY =
@@ -342,3 +342,17 @@ assert PUMPWILLFINISHIFNOERROR =
 	[] (forall[lineIndex:LineIndexT]
 		 ((!FLOWERROR[lineIndex] && !MEDICINEERROR[lineIndex] && !PINCHERROR[lineIndex]) ->
 	      	      (<>main_med_flow_finish[lineIndex])))
+
+
+// 8. Battery cannot be used up until power fail and the battery has become low
+fluent BATTERYLOW = 
+	<{low_battery}, {plug_in}>
+assert BATTERYUSEUP = 
+	[] (!battery_used_up U (POWERFAIL && BATTERYLOW))
+
+// 9. When the unit is locked, the pump cannot be turned off manually
+fluent LOCKSCREEN = 
+	<{lock_unit, confirm_settings[LineIndexT]}, {unlock_unit, battery_used_up}>
+assert NOMANUALTURNOFFWHENLOCKUNIT = 
+    [] (!turn_off U !LOCKSCREEN)
+
