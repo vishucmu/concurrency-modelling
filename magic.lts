@@ -310,7 +310,7 @@ LOWBATTERYLIGHTSTATE[display:DisplayStateT][lowBatteryState:LowBatteryLightState
 fluent PUMPSET[lineIndex:LineIndexT] =
 	<{confirm_settings[lineIndex]}, {change_setting[lineIndex], turn_off, battery_used_up}>
 assert SETBEFOREDISPENSE =
-	[](forall[lineIndex:LineIndexT] (PUMPSET[lineIndex] -> <>dispense_main_med_flow[lineIndex]))
+	[](forall[lineIndex:LineIndexT] (!PUMPSET[lineIndex] -> []!dispense_main_med_flow[lineIndex]))
 
 // 2. Electrical power can fail at any time.
 fluent ELEFAIL = <{unplug}, {plug_in}>
@@ -334,12 +334,12 @@ fluent FLOWALARMON[lineIndex:LineIndexT] =
 	<{flow_blocked[lineIndex]}, {flow_unblocked[lineIndex], silence_alarm, turn_off, battery_used_up}>
 fluent MEDICINEALARMON[lineIndex:LineIndexT] =
 	<{medicine_used_up[lineIndex]}, {change_medicine[lineIndex], silence_alarm, turn_off, battery_used_up}>
-fluent PINCHALARMON[lineIndex:LineIndexT] =
+fluent PINCHALARMON[lineIndex:LineIndexT] = 
 	<{line_pinched[lineIndex]}, {line_unpinched[lineIndex], silence_alarm, turn_off, battery_used_up}>
 assert ALARMWILLSOUND =
 	[](forall[lineIndex:LineIndexT] 
 		((flow_blocked[lineIndex] || medicine_used_up[lineIndex] || line_pinched[lineIndex]) -> 
-		     <>(FLOWALARMON[lineIndex] || MEDICINEALARMON[lineIndex] || PINCHALARMON)))
+		     <>(FLOWALARMON[lineIndex] || MEDICINEALARMON[lineIndex] || PINCHALARMON[lineIndex])))
 
 // 6. In the absence of errors the pump will continue to pump until the treatment is finished.
 fluent FLOWERROR[lineIndex:LineIndexT] =
@@ -350,5 +350,5 @@ fluent PINCHERROR[lineIndex:LineIndexT] =
 	<{line_pinched[lineIndex]}, {line_unpinched[lineIndex]}>
 assert PUMPWILLFINISHIFNOERROR =
 	[] (forall[lineIndex:LineIndexT]
-		 ((!FLOWERROR[lineIndex] && !MEDICINEERROR[lineIndex] && !PINCHERROR && dispense_main_med_flow[lineIndex]) ->
+		 (([]!FLOWERROR[lineIndex] && []!MEDICINEERROR[lineIndex] && []!PINCHERROR[lineIndex]) ->
 	      	      <>main_med_flow_finish[lineIndex] ))
