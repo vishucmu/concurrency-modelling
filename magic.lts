@@ -105,74 +105,84 @@ POWERSYETEM[powerState:PowerStateT][powerSource:PowerSourceT] = (
     when (powerSource != PowerSourceAC) 
         plug_in -> POWERSYETEM[powerState][PowerSourceAC]
     |
-    when (powerSource == PowerSourceBattery) 
+    when (powerState == PowerOn && powerSource == PowerSourceBattery) 
         low_battery -> POWERSYETEM[powerState][PowerSourceBatteryLow]
     |
-    when (powerSource == PowerSourceBatteryLow) 
+    when (powerState == PowerOn && powerSource == PowerSourceBatteryLow) 
         battery_used_up -> POWERSYETEM[PowerOff][PowerSourceNone]
 ).
 
 // Line part
-LINE(LineIndex=LineMinIndex) = LINESTATE[LineIndex][LineUnlocked],
-LINESTATE[lineIndex:LineIndexT][lineLock:LineLockStateT] = (
+LINE(LineIndex=LineMinIndex) = LINESTATE[LineUnlocked],
+LINESTATE[lineLock:LineLockStateT] = (
     when (lineLock == LineUnlocked)
-        connect_set[lineIndex] -> purge_air[lineIndex] -> lock_line[lineIndex] -> LINESTATE[lineIndex][LineLocked]
+        connect_set[LineIndex] -> purge_air[LineIndex] -> lock_line[LineIndex] -> LINESTATE[LineLocked]
     |
     when (lineLock == LineLocked)
-        erase_and_unlock_line[lineIndex] -> LINESTATE[lineIndex][LineUnlocked]
+        erase_and_unlock_line[LineIndex] -> LINESTATE[LineUnlocked]
     |
     when (lineLock == LineLocked)
-        confirm_settings[lineIndex] -> LINEPUMP[lineIndex]
+        confirm_settings[LineIndex] -> LINEPUMP
 ),
-LINEPUMP[lineIndex:LineIndexT] = (
-    change_settings[lineIndex] -> LINESTATE[lineIndex][LineLocked]
+LINEPUMP = (
+    change_settings[LineIndex] -> LINESTATE[LineLocked]
     |
-    medicine_used_up[lineIndex] -> change_medicine[lineIndex] -> LINESTATE[lineIndex][LineLocked]
+    dispense_main_med_flow[LineIndex] -> (
+        dispense_not_finsihed[LineIndex] -> LINEPUMP
+        |
+        main_med_flow_finish[LineIndex] -> LINESTATE[LineLocked]
+        |
+        medicine_used_up[LineIndex] -> change_medicine[LineIndex] -> LINEPUMP
+    )
     |
-    dispense_main_med_flow[lineIndex] -> LINEPUMP[lineIndex]
+    flow_blocked[LineIndex] -> flow_unblocked[LineIndex] -> LINEPUMP
     |
-    main_med_flow_finish[lineIndex] -> LINESTATE[lineIndex][LineLocked]
-    |
-    flow_blocked[lineIndex] -> flow_unblocked[lineIndex] -> LINEPUMP[lineIndex]
+    line_pinched[LineIndex] -> line_pinched[LineIndex] -> LINEPUMP
 ).
 
 // Infusion part
-INFUSION(LineIndex=LineMinIndex) = INFUSIONOFF[LineIndex],
-INFUSIONOFF[lineIndex:LineIndexT] = (
-    turn_on -> INFUSIONSETUP[LineIndex][ParamsNotSet]
+INFUSION(LineIndex=LineMinIndex) = INFUSIONOFF[ParamsNotSet],
+INFUSIONOFF[params:ParamsStateT] = (
+    turn_on -> INFUSIONSETUP[ParamsNotSet]
 ),
-INFUSIONSETUP[lineIndex:LineIndexT][params:ParamsStateT] = (
+INFUSIONSETUP[params:ParamsStateT] = (
     when (params == ParamsNotSet)
-        press_set[lineIndex] -> INFUSIONSETUP[lineIndex][ParamsSet]
+        press_set[LineIndex] -> INFUSIONSETUP[ParamsSet]
 	|
     when (params == ParamsSet)
-        clear_rate[lineIndex] -> INFUSIONSETUP[lineIndex][ParamsNotSet]
+        clear_rate[LineIndex] -> INFUSIONSETUP[ParamsNotSet]
 	|
     when (params == ParamsSet) 
-        confirm_settings[lineIndex] -> INFUSIONPUMP[lineIndex]
+        confirm_settings[LineIndex] -> INFUSIONPUMP
     |
-    turn_off -> INFUSIONOFF[lineIndex]
+    turn_off -> INFUSIONOFF[params]
 	|
-	battery_used_up -> INFUSIONOFF[lineIndex]
+	battery_used_up -> INFUSIONOFF[params]
 ),
-INFUSIONPUMP[lineIndex:LineIndexT] = (
-    change_settings[lineIndex] -> INFUSIONSETUP[lineIndex][ParamsSet]
+INFUSIONPUMP = (
+    change_settings[LineIndex] -> INFUSIONSETUP[ParamsSet]
     |
-    medicine_used_up[lineIndex] -> INFUSIONSETUP[lineIndex][ParamsSet]
+    medicine_used_up[LineIndex] -> INFUSIONSETUP[ParamsSet]
     |
-    dispense_main_med_flow[lineIndex] -> INFUSIONPUMP[lineIndex]
+    dispense_main_med_flow[LineIndex] -> INFUSIONPUMP
     |
-    main_med_flow_finish[lineIndex] -> INFUSIONSETUP[lineIndex][ParamsNotSet]
+    main_med_flow_finish[LineIndex] -> INFUSIONSETUP[ParamsNotSet]
     |
-    turn_off -> INFUSIONOFF[lineIndex]
+    turn_off -> INFUSIONOFF[ParamsSet]
 	|
-	battery_used_up -> INFUSIONOFF[lineIndex]
+	battery_used_up -> INFUSIONOFF[ParamsSet]
 ).
 
 // Alarm part
-ALARM = ALARM_OFF,
-ALARM_OFF = (
-    turn_on -> ALARM_STATE[AlarmSilenced]
+ALARM = ALARM_OFF[AlarmSilenced],
+ALARM_OFF[alarmState:AlarmStateT] = (
+    turn_on -> ALARM_STATE[alarmState]
+    |
+    flow_blocked[lineIndex:LineIndexT] -> ALARM_OFF[AlarmActivated]
+    |
+    medicine_used_up[lineIndex:LineIndexT] -> ALARM_OFF[AlarmActivated]
+    |
+    line_pinched[lineIndex:LineIndexT] -> ALARM_OFF[AlarmActivated]
 ),
 ALARM_STATE[alarmState:AlarmStateT] =
 (
@@ -183,11 +193,13 @@ ALARM_STATE[alarmState:AlarmStateT] =
     |
     medicine_used_up[lineIndex:LineIndexT] -> ALARM_STATE[AlarmActivated]
     |
+    line_pinched[lineIndex:LineIndexT] -> ALARM_STATE[AlarmActivated]
+    |
     low_battery -> ALARM_STATE[AlarmActivated]
     |
-    turn_off -> ALARM_OFF
+    turn_off -> ALARM_OFF[AlarmSilenced]
 	|
-	battery_used_up -> ALARM_OFF
+	battery_used_up -> ALARM_OFF[alarmState]
 ).
 
 // User interface part
@@ -200,7 +212,10 @@ UNITSTATE[unitLock:UnitLockStateT]= (
         unlock_unit -> UNITSTATE[UnitUnlocked]
     |
     when (unitLock == UnitUnlocked)
-        lock_unit -> dispense_main_med_flow[lineIndex:LineIndexT] -> UNITSTATE[UnitLocked]
+        lock_unit -> UNITSTATE[UnitLocked]
+    |
+    when (unitLock == UnitLocked) 
+        dispense_main_med_flow[lineIndex:LineIndexT] -> UNITSTATE[UnitLocked]
     |
     when (unitLock == UnitUnlocked)
         set_rate[lineIndex:LineIndexT] -> (
