@@ -100,11 +100,14 @@ range LowBatteryLightStateT = LowBatteryLightOff .. LowBatteryLightOn
 // animation of this model.
 //
 menu UserControlMenu = {
-    change_settings[LineIndexT], clear_rate[LineIndexT], confirm_settings[LineIndexT], connect_set[LineIndexT],
-    dispense_main_med_flow[LineIndexT], enter_value[LineIndexT], erase_and_unlock_line[LineIndexT],
-    flow_unblocked[LineIndexT], sound_alarm, lock_unit, plug_in, press_cancel[LineIndexT], 
-    press_set[LineIndexT], set_rate[LineIndexT], silence_alarm, turn_off, unlock_unit, unplug,
-    flow_blocked[LineIndexT], turn_on, purge_air[LineIndexT], lock_line[LineIndexT]
+    change_settings[LineIndexT], clear_rate[LineIndexT], 
+	confirm_settings[LineIndexT], connect_set[LineIndexT],
+    dispense_main_med_flow[LineIndexT], enter_value[LineIndexT], 
+	erase_and_unlock_line[LineIndexT], flow_unblocked[LineIndexT], 
+	sound_alarm, lock_unit, plug_in, press_cancel[LineIndexT], 
+    press_set[LineIndexT], set_rate[LineIndexT], silence_alarm, 
+	turn_off, unlock_unit, unplug, flow_blocked[LineIndexT], 
+	turn_on, purge_air[LineIndexT], lock_line[LineIndexT]
 }
 
 // The power system, which supply the power to the infusion
@@ -148,7 +151,8 @@ LINESTATE[lineLock:LineLockStateT] = (
 	// before the line is locked, the operator
 	// need to connect it and purge air
     when (lineLock == LineUnlocked)
-        connect_set[LineIndex] -> purge_air[LineIndex] -> lock_line[LineIndex] -> LINESTATE[LineLocked]
+        connect_set[LineIndex] -> purge_air[LineIndex] -> 
+			lock_line[LineIndex] -> LINESTATE[LineLocked]
     |
 	// when the line is locked, it can be unlocked
     when (lineLock == LineLocked)
@@ -172,9 +176,9 @@ LINEPUMP = (
         dispense_not_finsihed[LineIndex] -> LINEPUMP
         |
         main_med_flow_finish[LineIndex] -> LINESTATE[LineLocked]
-        |
-        medicine_used_up[LineIndex] -> change_medicine[LineIndex] -> LINEPUMP
     )
+	|
+    medicine_used_up[LineIndex] -> change_medicine[LineIndex] -> LINEPUMP
     |
 	// the line can be pinched or blocked during pumping
     flow_blocked[LineIndex] -> flow_unblocked[LineIndex] -> LINEPUMP
@@ -361,17 +365,23 @@ ERRORDIGITSTATE[display:DisplayStateT][errorState:ErrorStateT] = (
         turn_on -> ERRORDIGITSTATE[DisplayOn][errorState]
     |
 	// Different actions will trigger different messages
-    flow_blocked[LineIndex] -> ERRORDIGITSTATE[display][errorState | FlowBlockError]
+    flow_blocked[LineIndex] -> 
+		ERRORDIGITSTATE[display][errorState | FlowBlockError]
     |
-    flow_unblocked[LineIndex] -> ERRORDIGITSTATE[display][errorState & (AllError - FlowBlockError)]
+    flow_unblocked[LineIndex] -> 
+		ERRORDIGITSTATE[display][errorState & (AllError - FlowBlockError)]
     |
-    line_pinched[LineIndex] -> ERRORDIGITSTATE[display][errorState | LinePinchError]
+    line_pinched[LineIndex] -> 
+		ERRORDIGITSTATE[display][errorState | LinePinchError]
     |
-    line_unpinched[LineIndex] -> ERRORDIGITSTATE[display][errorState & (AllError - FlowBlockError)]
+    line_unpinched[LineIndex] -> 
+		ERRORDIGITSTATE[display][errorState & (AllError - FlowBlockError)]
     |
-    medicine_used_up[LineIndex] -> ERRORDIGITSTATE[display][errorState | MedicineUsedUpError]
+    medicine_used_up[LineIndex] -> 
+		ERRORDIGITSTATE[display][errorState | MedicineUsedUpError]
     |
-    change_medicine[LineIndex] -> ERRORDIGITSTATE[display][errorState & (AllError - MedicineUsedUpError)]
+    change_medicine[LineIndex] -> 
+		ERRORDIGITSTATE[display][errorState & (AllError - MedicineUsedUpError)]
     |
     when (display == DisplayOn)
 		// at any time the system can be turned off
@@ -408,11 +418,14 @@ LOWBATTERYLIGHTSTATE[display:DisplayStateT][lowBatteryState:LowBatteryLightState
 ).
 
 // all systems run concurrently
-||PUMP = (POWER || forall [index:LineIndexT] LINE(index) || forall [index:LineIndexT] INFUSION(index) || ALARM || UNIT || forall [index:LineIndexT] ERRORDIGIT(index) || LOWBATTERYLIGHT).
+||PUMP = (POWER || forall [index:LineIndexT] LINE(index) || 
+	forall [index:LineIndexT] INFUSION(index) || ALARM || UNIT || 
+	forall [index:LineIndexT] ERRORDIGIT(index) || LOWBATTERYLIGHT).
 
 // 1. The pump cannot start pumping without the operator first confirming the settings on the pump.
 assert SETBEFOREDISPENSE =
-	(forall[lineIndex:LineIndexT] (!dispense_main_med_flow[lineIndex] U confirm_settings[lineIndex]))
+	forall[lineIndex:LineIndexT] 
+		(!dispense_main_med_flow[lineIndex] U confirm_settings[lineIndex])
 
 // 2. Electrical power can fail at any time.
 fluent ELEFAIL = <{unplug}, {plug_in}>
@@ -421,19 +434,22 @@ assert ELECTRICALFAILANYTIME =
 
 // 3. If the backup battery power fails, pumping will not occur on any line.
 assert NODISPENSEWITHDEADBATTERY =
-	[](forall[lineIndex:LineIndexT] (battery_used_up -> (!dispense_main_med_flow[lineIndex] U plug_in)))
+	[](forall[lineIndex:LineIndexT] (battery_used_up -> 
+		(!dispense_main_med_flow[lineIndex] U plug_in)))
 
 // 4. It is always possible to resume pumping after a failure.
 fluent POWERFAIL =
 	<{unplug}, {plug_in}>
 assert RESUMEDISPENSEPOSSIBLE =
-	[] (forall[lineIndex:LineIndexT] (POWERFAIL -> <> (confirm_setting -> dispense_main_med_flow[lineIndex])))
+	[](forall[lineIndex:LineIndexT] (POWERFAIL -> 
+		<>(confirm_setting -> dispense_main_med_flow[lineIndex])))
 
 // 5. An alarm will sound on any line failure
 fluent ALARMON[lineIndex:LineIndexT] =
-	<{flow_blocked[lineIndex], medicine_used_up[lineIndex], line_pinched[lineIndex]}, {silence_alarm, turn_off, battery_used_up}>
+	<{flow_blocked[lineIndex], medicine_used_up[lineIndex], line_pinched[lineIndex]}, 
+		{silence_alarm, turn_off, battery_used_up}>
 assert ALARMWILLSOUND =
-	[](forall[lineIndex:LineIndexT] (ALARMON[lineIndex] -> <>(silence_alarm)))
+	[](forall[lineIndex:LineIndexT] (ALARMON[lineIndex] -> <>silence_alarm))
 
 // 6. In the absence of errors the pump will continue to pump until the treatment is finished.
 fluent FLOWERROR[lineIndex:LineIndexT] =
@@ -445,16 +461,16 @@ fluent PINCHERROR[lineIndex:LineIndexT] =
 assert PUMPWILLFINISHIFNOERROR =
 	[] (forall[lineIndex:LineIndexT]
 		 (([]!FLOWERROR[lineIndex] && []!MEDICINEERROR[lineIndex] && []!PINCHERROR[lineIndex]) ->
- 	      	      <>main_med_flow_finish[lineIndex] ))
+ 	      	      <>main_med_flow_finish[lineIndex]))
 
 // 8. Battery cannot be used up until power fail and the battery has become low
 fluent BATTERYLOW = 
 	<{low_battery}, {plug_in}>
 assert BATTERYUSEUP = 
-	[] (!battery_used_up U (POWERFAIL && BATTERYLOW))
+	[](!battery_used_up U (POWERFAIL && BATTERYLOW))
 
 // 9. When the unit is locked, the pump cannot be turned off manually
 fluent LOCKSCREEN = 
 	<{lock_unit, confirm_settings[LineIndexT]}, {unlock_unit, battery_used_up}>
 assert NOMANUALTURNOFFWHENLOCKUNIT = 
-    [] (!turn_off U !LOCKSCREEN)
+    [](!turn_off U !LOCKSCREEN)
