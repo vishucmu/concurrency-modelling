@@ -60,7 +60,7 @@ range LineIndexT = LineMinIndex .. LineMaxIndex
 // 
 const PowerOn = 10
 const PowerOff = 11
-range PowerStateT = PowerOn..PowerOff
+range PowerStateT = PowerOn .. PowerOff
 
 //
 // Sources of Power
@@ -69,14 +69,17 @@ const PowerSourceAC = 12
 const PowerSourceBattery = 13
 const PowerSourceBatteryLow = 14
 const PowerSourceNone = 15
-range PowerSourceT = PowerSourceAC..PowerSourceNone
+range PowerSourceT = PowerSourceAC .. PowerSourceNone
 
+// 
+// Light status
 //
-// States of flow
-//
-const FlowUnblocked = 16
-const FlowBlocked = 17
-range FlowStateT = FlowUnblocked..FlowBlocked
+const NoLineError = 0
+const FlowBlockError = 1
+const LinePinchError = 2
+const MedicineUsedUpError = 4
+const AllError = FlowBlockError + LinePinchError + MedicineUsedUpError
+range ErrorStateT = NoLineError .. AllError
 
 //
 // Set of actions that the user of the LTSA tool can control in an
@@ -137,7 +140,7 @@ LINEPUMP = (
     |
     flow_blocked[LineIndex] -> flow_unblocked[LineIndex] -> LINEPUMP
     |
-    line_pinched[LineIndex] -> line_pinched[LineIndex] -> LINEPUMP
+    line_pinched[LineIndex] -> line_unpinched[LineIndex] -> LINEPUMP
 ).
 
 // Infusion part
@@ -247,7 +250,41 @@ UNITSTATE[unitLock:UnitLockStateT]= (
 	battery_used_up -> UNITOFF
 ).
 
-||PUMP = (POWER || forall [index:LineIndexT] LINE(index) || forall [index:LineIndexT] INFUSION(index) || ALARM || UNIT).
+ERRORLIGHT(LineIndex=LineMinIndex) = ERRORLIGHTOFF[NoLineError],
+ERRORLIGHTOFF[errorState:ErrorStateT] = (
+    turn_on -> ERRORLIGHTSTATE[errorState]
+    |
+    flow_blocked[LineIndex] -> ERRORLIGHTOFF[errorState | FlowBlockError]
+    |
+    flow_unblocked[LineIndex] -> ERRORLIGHTOFF[errorState & (AllError - FlowBlockError)]
+    |
+    line_pinched[LineIndex] -> ERRORLIGHTOFF[errorState | LinePinchError]
+    |
+    line_unpinched[LineIndex] -> ERRORLIGHTOFF[errorState & (AllError - FlowBlockError)]
+    |
+    medicine_used_up[LineIndex] -> ERRORLIGHTOFF[errorState | MedicineUsedUpError]
+    |
+    change_medicine[LineIndex] -> ERRORLIGHTOFF[errorState & (AllError - MedicineUsedUpError)]
+),
+ERRORLIGHTSTATE[errorState:ErrorStateT] = (
+    flow_blocked[LineIndex] -> ERRORLIGHTSTATE[errorState | FlowBlockError]
+    |
+    flow_unblocked[LineIndex] -> ERRORLIGHTSTATE[errorState & (AllError - FlowBlockError)]
+    |
+    line_pinched[LineIndex] -> ERRORLIGHTSTATE[errorState | LinePinchError]
+    |
+    line_unpinched[LineIndex] -> ERRORLIGHTSTATE[errorState & (AllError - FlowBlockError)]
+    |
+    medicine_used_up[LineIndex] -> ERRORLIGHTSTATE[errorState | MedicineUsedUpError]
+    |
+    change_medicine[LineIndex] -> ERRORLIGHTSTATE[errorState & (AllError - MedicineUsedUpError)]
+    |
+    turn_off -> ERRORLIGHTOFF[errorState]
+    |
+    battery_used_up -> ERRORLIGHTOFF[errorState]
+).
+
+||PUMP = (POWER || forall [index:LineIndexT] LINE(index) || forall [index:LineIndexT] INFUSION(index) || ALARM || UNIT || forall [index:LineIndexT] ERRORLIGHT(index)).
 
 // 1. The pump cannot start pumping without the operator first confirming the settings on the pump.
 fluent PUMPSET[lineIndex:LineIndexT] =
