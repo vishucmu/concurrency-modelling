@@ -240,6 +240,12 @@ fluent PUMPSET[lineIndex:LineIndexT] =
 assert SETBEFOREDISPENSE =
 	forall[lineIndex:LineIndexT] [](!PUMPSET[lineIndex] -> !dispense_main_med_flow[lineIndex])
 
+// 2. Electrical power can fail at any time.
+fluent POWERFAIL =
+	<{unplug}, {plug_in}>
+assert POWERCANFAILANYTIME =
+	[]<>POWERFAIL
+
 // 3. If the backup battery power fails, pumping will not occur on any line.
 fluent BATTERYDEAD =
 	<{battery_used_up},  {plug_in}>
@@ -247,8 +253,6 @@ assert NODISPENSEWITHDEADBATTERY =
 	forall[lineIndex:LineIndexT] [](BATTERYDEAD -> !dispense_main_med_flow[lineIndex])
 
 // 4. It is always possible to resume pumping after a failure.
-fluent POWERFAIL =
-	<{unplug}, {plug_in}>
 assert RESUMEDISPENSEPOSSIBLE =
 	forall[lineIndex:LineIndexT] [](POWERFAIL -> <>dispense_main_med_flow[lineIndex])
 
