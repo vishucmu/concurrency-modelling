@@ -307,10 +307,8 @@ LOWBATTERYLIGHTSTATE[display:DisplayStateT][lowBatteryState:LowBatteryLightState
 ||PUMP = (POWER || forall [index:LineIndexT] LINE(index) || forall [index:LineIndexT] INFUSION(index) || ALARM || UNIT || forall [index:LineIndexT] ERRORDIGIT(index) || LOWBATTERYLIGHT).
 
 // 1. The pump cannot start pumping without the operator first confirming the settings on the pump.
-fluent PUMPSET[lineIndex:LineIndexT] =
-	<{confirm_settings[lineIndex]}, {change_setting[lineIndex], turn_off, battery_used_up}>
 assert SETBEFOREDISPENSE =
-	[](forall[lineIndex:LineIndexT] (!PUMPSET[lineIndex] -> []!dispense_main_med_flow[lineIndex]))
+	(forall[lineIndex:LineIndexT] (!dispense_main_med_flow[lineIndex] U confirm_settings[lineIndex]))
 
 // 2. Electrical power can fail at any time.
 fluent ELEFAIL = <{unplug}, {plug_in}>
@@ -321,7 +319,7 @@ assert ELECTRICALFAILANYTIME =
 fluent BATTERYDEAD =
 	<{battery_used_up},  {plug_in}>
 assert NODISPENSEWITHDEADBATTERY =
-	[] (forall[lineIndex:LineIndexT] (BATTERYDEAD -> <>!dispense_main_med_flow[lineIndex]))
+	[](forall[lineIndex:LineIndexT] (BATTERYDEAD -> !dispense_main_med_flow[lineIndex]))
 
 // 4. It is always possible to resume pumping after a failure.
 fluent POWERFAIL =
@@ -330,16 +328,10 @@ assert RESUMEDISPENSEPOSSIBLE =
 	[] (forall[lineIndex:LineIndexT] (POWERFAIL -> <> (confirm_setting -> dispense_main_med_flow[lineIndex])))
 
 // 5. An alarm will sound on any line failure
-fluent FLOWALARMON[lineIndex:LineIndexT] =
-	<{flow_blocked[lineIndex]}, {flow_unblocked[lineIndex], silence_alarm, turn_off, battery_used_up}>
-fluent MEDICINEALARMON[lineIndex:LineIndexT] =
-	<{medicine_used_up[lineIndex]}, {change_medicine[lineIndex], silence_alarm, turn_off, battery_used_up}>
-fluent PINCHALARMON[lineIndex:LineIndexT] = 
-	<{line_pinched[lineIndex]}, {line_unpinched[lineIndex], silence_alarm, turn_off, battery_used_up}>
+fluent ALARMON[lineIndex:LineIndexT] =
+	<{flow_blocked[lineIndex], medicine_used_up[lineIndex], line_pinched[lineIndex]}, {silence_alarm, turn_off, battery_used_up}>
 assert ALARMWILLSOUND =
-	[](forall[lineIndex:LineIndexT] 
-		((flow_blocked[lineIndex] || medicine_used_up[lineIndex] || line_pinched[lineIndex]) -> 
-		     <>(FLOWALARMON[lineIndex] || MEDICINEALARMON[lineIndex] || PINCHALARMON[lineIndex])))
+	[](forall[lineIndex:LineIndexT] (ALARMON[lineIndex] -> <>(silence_alarm)))
 
 // 6. In the absence of errors the pump will continue to pump until the treatment is finished.
 fluent FLOWERROR[lineIndex:LineIndexT] =
